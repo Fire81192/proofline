@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="docs/assets/cover.svg" width="820" alt="proofline：原文快照 → 引文 → 主张，逐字定位 mode: exact，下面是 check 与 status 的真实输出">
+<img src="docs/assets/cover.png" width="820" alt="proofline：原文快照 → 引文 → 主张，逐字定位 mode: exact，下面是 check 与 status 的真实输出">
 
 <h1>proofline</h1>
 
