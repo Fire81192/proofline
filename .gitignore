@@ -11,5 +11,6 @@ demo/entries/.lock
 
 # 开发时的图预览页，不进发布
 docs/assets/preview.html
+docs/preview-all.html
 docs/assets/hero-info.svg
 docs/assets/hero-full.svg

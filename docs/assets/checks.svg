@@ -1,0 +1,84 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 700" width="1200" height="700" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif">
+  <rect width="1200" height="700" fill="#ffffff"/>
+
+  <text x="600" y="46" text-anchor="middle" font-size="24" font-weight="600" fill="#1f2328">六道检查</text>
+  <text x="600" y="74" text-anchor="middle" font-size="14" fill="#59636e">任何一道不过，这条主张就进不来。每道都写着不过会怎样。</text>
+
+  <!-- 表头 -->
+  <text x="96" y="116" font-size="11" fill="#8c959f" letter-spacing="1">#</text>
+  <text x="140" y="116" font-size="11" fill="#8c959f" letter-spacing="1">检查什么</text>
+  <text x="400" y="116" font-size="11" fill="#8c959f" letter-spacing="1">怎么查</text>
+  <text x="880" y="116" font-size="11" fill="#8c959f" letter-spacing="1">不过会怎样</text>
+
+  <g font-size="13">
+    <!-- 1 -->
+    <rect x="70" y="128" width="1060" height="62" rx="8" fill="#f6f8fa" stroke="#eaeef2"/>
+    <text x="96" y="166" font-size="15" font-weight="600" fill="#0969da" font-family="ui-monospace, Consolas, monospace">1</text>
+    <text x="140" y="158" font-size="14" font-weight="600" fill="#1f2328">形状</text>
+    <text x="140" y="177" font-size="11" fill="#8c959f">字段齐不齐</text>
+    <text x="400" y="166" fill="#3d444d">字段类型、长度、枚举值、必填项</text>
+    <text x="880" y="166" fill="#a40e26">hard_fail：claim 是对象、id 是数字，都过不去</text>
+
+    <!-- 2 -->
+    <rect x="70" y="196" width="1060" height="62" rx="8" fill="#ffffff" stroke="#eaeef2"/>
+    <text x="96" y="234" font-size="15" font-weight="600" fill="#0969da" font-family="ui-monospace, Consolas, monospace">2</text>
+    <text x="140" y="226" font-size="14" font-weight="600" fill="#1f2328">引文</text>
+    <text x="140" y="245" font-size="11" fill="#8c959f">原文里有没有</text>
+    <text x="400" y="234" fill="#3d444d">三级从严到宽：逐字 → 折叠全角空白 → 去全部空白</text>
+    <text x="880" y="234" fill="#a40e26">三级都不到 → 不许入库；宽松命中 → 明说「不是逐字」</text>
+
+    <!-- 3 -->
+    <rect x="70" y="264" width="1060" height="62" rx="8" fill="#f6f8fa" stroke="#eaeef2"/>
+    <text x="96" y="302" font-size="15" font-weight="600" fill="#0969da" font-family="ui-monospace, Consolas, monospace">3</text>
+    <text x="140" y="294" font-size="14" font-weight="600" fill="#1f2328">哈希</text>
+    <text x="140" y="313" font-size="11" fill="#8c959f">原文被改过没</text>
+    <text x="400" y="302" fill="#3d444d">快照的 sha256 与 frontmatter 里记的对一遍</text>
+    <text x="880" y="302" fill="#a40e26">对不上 → snapshot_changed，来源降 unresolved</text>
+
+    <!-- 4 -->
+    <rect x="70" y="332" width="1060" height="62" rx="8" fill="#ffffff" stroke="#eaeef2"/>
+    <text x="96" y="370" font-size="15" font-weight="600" fill="#0969da" font-family="ui-monospace, Consolas, monospace">4</text>
+    <text x="140" y="362" font-size="14" font-weight="600" fill="#1f2328">数值</text>
+    <text x="140" y="381" font-size="11" fill="#8c959f">那个数从哪来</text>
+    <text x="400" y="370" fill="#3d444d">value 里的 number 必须在引文里出现</text>
+    <text x="880" y="370" fill="#a40e26">只查 basis=条目；判断档的数字是算的，不查</text>
+
+    <!-- 5 -->
+    <rect x="70" y="400" width="1060" height="62" rx="8" fill="#f6f8fa" stroke="#eaeef2"/>
+    <text x="96" y="438" font-size="15" font-weight="600" fill="#0969da" font-family="ui-monospace, Consolas, monospace">5</text>
+    <text x="140" y="430" font-size="14" font-weight="600" fill="#1f2328">留痕</text>
+    <text x="140" y="449" font-size="11" fill="#8c959f">谁什么时候写的</text>
+    <text x="400" y="438" fill="#3d444d">入库记录 + 链式哈希 + 链头（末行哈希与总条数）</text>
+    <text x="880" y="438" fill="#a40e26">改末行 → 链头不符；追加一行 → 条数不符</text>
+
+    <!-- 6 -->
+    <rect x="70" y="468" width="1060" height="62" rx="8" fill="#ffffff" stroke="#eaeef2"/>
+    <text x="96" y="506" font-size="15" font-weight="600" fill="#0969da" font-family="ui-monospace, Consolas, monospace">6</text>
+    <text x="140" y="498" font-size="14" font-weight="600" fill="#1f2328">两个维度</text>
+    <text x="140" y="517" font-size="11" fill="#8c959f">说过 ≠ 是真的</text>
+    <text x="400" y="506" fill="#3d444d">来源维度只管定位；世界维度只认佐证与实测</text>
+    <text x="880" y="506" fill="#a40e26">来源再硬也推不出世界为真——两个数不互相抵扣</text>
+  </g>
+
+  <!-- 四态 -->
+  <line x1="70" y1="556" x2="1130" y2="556" stroke="#d8dee4"/>
+  <text x="70" y="590" font-size="12" fill="#8c959f" letter-spacing="1.2">六道全过之后，check 给四种状态</text>
+
+  <g>
+    <rect x="70" y="604" width="248" height="52" rx="7" fill="#dafbe1" stroke="#4ac26b"/>
+    <text x="86" y="626" font-size="13" font-weight="600" fill="#1a7f37" font-family="ui-monospace, Consolas, monospace">pass</text>
+    <text x="86" y="644" font-size="11" fill="#1a7f37">全过，可以直接用</text>
+
+    <rect x="346" y="604" width="248" height="52" rx="7" fill="#ddf4ff" stroke="#54aeff"/>
+    <text x="362" y="626" font-size="13" font-weight="600" fill="#0969da" font-family="ui-monospace, Consolas, monospace">fixed</text>
+    <text x="362" y="644" font-size="11" fill="#0969da">能自动修，已经修完</text>
+
+    <rect x="622" y="604" width="248" height="52" rx="7" fill="#fff8c5" stroke="#d4a72c"/>
+    <text x="638" y="626" font-size="13" font-weight="600" fill="#7d4e00" font-family="ui-monospace, Consolas, monospace">dirty</text>
+    <text x="638" y="644" font-size="11" fill="#7d4e00">能修，但要你确认</text>
+
+    <rect x="898" y="604" width="232" height="52" rx="7" fill="#ffebe9" stroke="#ff8182"/>
+    <text x="914" y="626" font-size="13" font-weight="600" fill="#a40e26" font-family="ui-monospace, Consolas, monospace">hard_fail</text>
+    <text x="914" y="644" font-size="11" fill="#a40e26">语义或证据废了，拒绝写入</text>
+  </g>
+</svg>
