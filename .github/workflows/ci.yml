@@ -20,9 +20,7 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
       - name: 跑测试
-        # 显式单并发：Linux runner 核数多，默认并发跑测试文件时
-        # 偶发失败（本地三次里撞到一次 SIGTERM）。先确认是不是并发问题。
-        run: node --test --test-concurrency=1
+        run: node --test
       - name: 跑 demo（确认 clone 下来就能用）
         run: node demo/run.mjs
         if: matrix.os == 'ubuntu-latest' && matrix.node == 22
