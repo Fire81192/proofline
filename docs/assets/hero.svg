@@ -1,0 +1,85 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 660" width="1200" height="660" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#8c959f"/>
+    </marker>
+    <marker id="arrowStrong" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#0969da"/>
+    </marker>
+  </defs>
+
+  <rect width="1200" height="660" fill="#ffffff"/>
+
+  <!-- 标题 -->
+  <text x="600" y="58" text-anchor="middle" font-size="34" font-weight="600" fill="#1f2328" letter-spacing="0.5">proofline</text>
+  <text x="600" y="94" text-anchor="middle" font-size="17" fill="#59636e">每条主张都要能在原文里定位到。定位不到，就不许入库。</text>
+
+  <!-- ① 原文快照 -->
+  <g>
+    <rect x="70" y="140" width="250" height="132" rx="10" fill="#ffffff" stroke="#d0d7de" stroke-width="1.5"/>
+    <text x="94" y="172" font-size="13" fill="#59636e" letter-spacing="0.6">原文快照</text>
+    <text x="94" y="202" font-size="16" font-weight="600" fill="#1f2328" font-family="ui-monospace, SFMono-Regular, Consolas, monospace">raw/source.txt</text>
+    <line x1="94" y1="218" x2="296" y2="218" stroke="#eaeef2" stroke-width="1"/>
+    <text x="94" y="242" font-size="13" fill="#59636e" font-family="ui-monospace, Consolas, monospace">sha256: f466d2…27bb</text>
+    <text x="94" y="262" font-size="13" fill="#59636e">295 字节 · 未被改动</text>
+  </g>
+
+  <!-- 箭头 1 -->
+  <line x1="322" y1="206" x2="392" y2="206" stroke="#8c959f" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- ② 引文 -->
+  <g>
+    <rect x="400" y="140" width="330" height="132" rx="10" fill="#ffffff" stroke="#d0d7de" stroke-width="1.5"/>
+    <text x="424" y="172" font-size="13" fill="#59636e" letter-spacing="0.6">你引的那一句</text>
+    <text x="424" y="202" font-size="16" font-weight="600" fill="#1f2328" font-family="ui-monospace, Consolas, monospace">quotes[0]</text>
+    <line x1="424" y1="218" x2="706" y2="218" stroke="#eaeef2" stroke-width="1"/>
+    <text x="424" y="242" font-size="13" fill="#3d444d">「标准大气压（101.325 kPa）下，</text>
+    <text x="424" y="262" font-size="13" fill="#3d444d">　纯水的沸点是 100 ℃。」</text>
+  </g>
+
+  <!-- 箭头 2 -->
+  <line x1="732" y1="206" x2="802" y2="206" stroke="#8c959f" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- ③ 主张 -->
+  <g>
+    <rect x="810" y="140" width="320" height="132" rx="10" fill="#ffffff" stroke="#d0d7de" stroke-width="1.5"/>
+    <text x="834" y="172" font-size="13" fill="#59636e" letter-spacing="0.6">你的主张</text>
+    <text x="834" y="202" font-size="16" font-weight="600" fill="#1f2328" font-family="ui-monospace, Consolas, monospace">claim</text>
+    <line x1="834" y1="218" x2="1106" y2="218" stroke="#eaeef2" stroke-width="1"/>
+    <text x="834" y="242" font-size="13" fill="#3d444d">标准大气压（101.325 kPa）下，</text>
+    <text x="834" y="262" font-size="13" fill="#3d444d">纯水的沸点是 100 ℃</text>
+  </g>
+
+  <!-- 定位徽章：从引文往下 -->
+  <line x1="565" y1="274" x2="565" y2="308" stroke="#0969da" stroke-width="1.5" marker-end="url(#arrowStrong)"/>
+  <g>
+    <rect x="455" y="312" width="220" height="52" rx="8" fill="#ddf4ff" stroke="#54aeff" stroke-width="1.2"/>
+    <text x="565" y="334" text-anchor="middle" font-size="13" font-weight="600" fill="#0969da">逐字定位 · 不改任何字符</text>
+    <text x="565" y="353" text-anchor="middle" font-size="12" fill="#0969da" font-family="ui-monospace, Consolas, monospace">mode: exact</text>
+  </g>
+
+  <!-- 说明：三级 -->
+  <text x="688" y="334" font-size="12" fill="#59636e">命中不到 → 降级 normalized</text>
+  <text x="688" y="352" font-size="12" fill="#59636e">再不到 → space-insensitive</text>
+  <text x="688" y="370" font-size="12" fill="#59636e">三级都不到 → 不许入库</text>
+
+  <!-- 终端 -->
+  <g>
+    <rect x="70" y="404" width="1060" height="216" rx="10" fill="#f6f8fa" stroke="#d0d7de" stroke-width="1.5"/>
+    <circle cx="94" cy="426" r="5" fill="#d0d7de"/>
+    <circle cx="112" cy="426" r="5" fill="#d0d7de"/>
+    <circle cx="130" cy="426" r="5" fill="#d0d7de"/>
+    <line x1="70" y1="444" x2="1130" y2="444" stroke="#eaeef2" stroke-width="1"/>
+
+    <text x="94" y="476" font-size="14" fill="#1f2328" font-family="ui-monospace, SFMono-Regular, Consolas, monospace">$ proofline check demo/entries</text>
+    <text x="94" y="502" font-size="14" fill="#1a7f37" font-family="ui-monospace, Consolas, monospace">扫描 3 条 | pass=3 fixed=0 dirty=0 hard=0</text>
+
+    <text x="94" y="536" font-size="14" fill="#1f2328" font-family="ui-monospace, Consolas, monospace">$ proofline status 2026-01-01-demo-boiling-100 demo/entries</text>
+    <text x="94" y="562" font-size="14" fill="#3d444d">受控　　　<tspan fill="#1a7f37">是</tspan><tspan fill="#59636e">（2026-11-22T13:47:22 · create）</tspan></text>
+    <text x="94" y="584" font-size="14" fill="#3d444d">能引用　　<tspan fill="#1a7f37">是</tspan><tspan fill="#59636e">（来源确实这么说过）</tspan></text>
+    <text x="94" y="606" font-size="14" fill="#3d444d">能下判断　<tspan fill="#bc4c00">否</tspan><tspan fill="#59636e">（还缺世界层面的结论，或不在标准层）</tspan></text>
+  </g>
+
+  <!-- 右下角注释 -->
+  <text x="1130" y="642" text-anchor="end" font-size="12" fill="#8c959f">零运行时依赖 · 516 个测试</text>
+</svg>

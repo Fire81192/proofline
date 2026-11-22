@@ -8,3 +8,8 @@ demo/证据册.md
 
 # 临时锁
 demo/entries/.lock
+
+# 开发时的图预览页，不进发布
+docs/assets/preview.html
+docs/assets/hero-info.svg
+docs/assets/hero-full.svg
