@@ -24,7 +24,11 @@ test('resolveInside：目录内的相对路径放行', async () => {
 
 test('resolveInside：越界的路径一律返回 null', async () => {
   const dir = await entryDir();
-  for (const bad of ['../x.txt', '../../etc/passwd', '/etc/passwd', 'C:/Windows/win.ini', 'C:\\Windows\\win.ini', '', '.']) {  // audit-ignore 夹具
+  // 盘符路径只在 Windows 上是「绝对路径」。
+  // 在 Linux 上 `C:/Windows/win.ini` 里没有盘符概念，它会被当成相对路径拼在 dir 下面，
+  // 落在库内——那不是越界，是平台差异。样本必须按平台选，否则测的是平台，不是边界。
+  const driveAbs = process.platform === 'win32' ? ['C:/Windows/win.ini', 'C:\\Windows\\win.ini'] : [];
+  for (const bad of ['../x.txt', '../../etc/passwd', '/etc/passwd', ...driveAbs, '', '.']) {  // audit-ignore 夹具
     assert.equal(resolveInside(dir, bad), null, `不该放行：${bad}`);
   }
 });
