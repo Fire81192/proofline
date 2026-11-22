@@ -1,0 +1,29 @@
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    name: node ${{ matrix.node }} / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        node: [20, 22, 24]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - name: 跑测试
+        run: node --test
+      - name: 跑 demo（确认 clone 下来就能用）
+        run: node demo/run.mjs
+        if: matrix.os == 'ubuntu-latest' && matrix.node == 22
+      - name: 检查 demo 库是干净的
+        run: node src/cli.js check demo/entries
+        if: matrix.os == 'ubuntu-latest' && matrix.node == 22
