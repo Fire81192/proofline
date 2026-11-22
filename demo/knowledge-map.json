@@ -1,0 +1,56 @@
+{
+  "schema": 1,
+  "project": "演示库",
+  "blocks": [
+    {
+      "id": "boiling-conditions",
+      "name": "沸腾的条件",
+      "basis": "条目",
+      "needs": ["thermo-basics"],
+      "needLevels": { "thermo-basics": 1 },
+      "entries": ["2026-01-01-demo-boiling-100"],
+      "gap": "只知道「100 ℃」，不知道它依赖气压——这一步还没走完。"
+    },
+    {
+      "id": "altitude-effect",
+      "name": "海拔的影响",
+      "basis": "条目",
+      "needs": ["thermo-basics"],
+      "needLevels": { "thermo-basics": 2 },
+      "entries": ["2026-01-01-demo-altitude"],
+      "gap": "「每 300 米降 1 ℃」是个近似，适用范围没核实。"
+    },
+    {
+      "id": "pressure-cooker",
+      "name": "用工具补偿",
+      "basis": "判断",
+      "needs": ["thermo-basics", "kitchen-practice"],
+      "needLevels": { "thermo-basics": 2, "kitchen-practice": 1 },
+      "entries": ["2026-01-01-demo-inference"],
+      "gap": "压力锅实际能达到多少 kPa，还没查。"
+    }
+  ],
+  "domains": [
+    {
+      "id": "thermo-basics",
+      "name": "热学基础",
+      "kind": "学科",
+      "role": "主线",
+      "prereq": [],
+      "levels": [
+        { "n": 1, "text": "知道沸点随气压变" },
+        { "n": 2, "text": "能说清饱和蒸气压" },
+        { "n": 3, "text": "能解释相变过程" }
+      ]
+    },
+    {
+      "id": "kitchen-practice",
+      "name": "厨房实践",
+      "kind": "技术",
+      "role": "主线",
+      "prereq": [],
+      "levels": [{ "n": 1, "text": "会用压力锅" }]
+    }
+  ],
+  "points": []
+}

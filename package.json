@@ -1,0 +1,39 @@
+{
+  "name": "proofline",
+  "version": "0.4.0",
+  "description": "断言审计：每条主张都必须能在原文里逐字定位到，判定拆成「来源说了什么」与「是不是真的」两个独立维度。",
+  "type": "module",
+  "license": "MIT",
+  "author": "Fire81192",
+  "keywords": [
+    "citation",
+    "provenance",
+    "evidence",
+    "knowledge-base",
+    "fact-checking",
+    "cli",
+    "zero-dependency"
+  ],
+  "bin": {
+    "proofline": "./src/cli.js"
+  },
+  "files": [
+    "src",
+    "tools",
+    "AGENTS.md",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "demo": "node demo/run.mjs",
+    "start": "node src/cli.js open",
+    "serve": "node src/cli.js serve",
+    "view": "node src/cli.js view",
+    "map": "node src/cli.js map",
+    "test": "node --test",
+    "demo:view": "node src/cli.js view demo/entries --md && node src/cli.js map demo/entries"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

@@ -1,0 +1,10 @@
+node_modules/
+*.tmp
+
+# 生成的页面（可随时重建）
+demo/课程地图.html
+demo/证据册.html
+demo/证据册.md
+
+# 临时锁
+demo/entries/.lock
