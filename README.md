@@ -2,16 +2,24 @@
 
 <img src="docs/assets/cover.svg" width="820" alt="proofline：原文快照 → 引文 → 主张，逐字定位 mode: exact，下面是 check 与 status 的真实输出">
 
-# proofline
+<h1>proofline</h1>
 
-**每条主张都要能在原文里定位到。定位不到，就不许入库。**
+<p><strong>每条主张都要能在原文里定位到。定位不到，就不许入库。</strong></p>
 
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Node](https://img.shields.io/badge/node-%3E%3D20-brightgreen)]()
-[![Dependencies](https://img.shields.io/badge/dependencies-0-brightgreen)]()
-[![Tests](https://img.shields.io/badge/tests-516%20passing-brightgreen)]()
+<p>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License"></a>
+  <a href="#"><img src="https://img.shields.io/badge/node-%3E%3D20-brightgreen" alt="Node 20+"></a>
+  <a href="#"><img src="https://img.shields.io/badge/dependencies-0-brightgreen" alt="零依赖"></a>
+  <a href="#"><img src="https://img.shields.io/badge/tests-516%20passing-brightgreen" alt="516 个测试"></a>
+</p>
 
-[30 秒上手](#30-秒上手) · [三条硬规则](#三条硬规则笔记软件一条都不管) · [它不做什么](#它不做什么) · [和同类差在哪](#和同类差在哪) · [完整说明](docs/manual.md)
+<p>
+  <a href="#30-秒上手">30 秒上手</a> ·
+  <a href="#三条硬规则笔记软件一条都不管">三条硬规则</a> ·
+  <a href="#它不做什么">它不做什么</a> ·
+  <a href="#和同类差在哪">和同类差在哪</a> ·
+  <a href="docs/manual.md">完整说明</a>
+</p>
 
 </div>
 
