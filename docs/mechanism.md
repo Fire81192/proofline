@@ -10,7 +10,7 @@
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="assets/lifecycle-dark.png">
-  <img src="assets/lifecycle.png" alt="一条主张的一生：new → check → status → view/map，每步产出什么，三个失败出口">
+  <img src="assets/lifecycle-light.png" alt="一条主张的一生：new → check → status → view/map，每步产出什么，三个失败出口">
 </picture>
 
 只有第一步会**改条目库**。后三步都不改条目——`status` 和 `view` 每次都从原文重算，不缓存结论。
