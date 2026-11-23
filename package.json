@@ -22,7 +22,8 @@
     "tools",
     "AGENTS.md",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "tools/exam"
   ],
   "scripts": {
     "demo": "node demo/run.mjs",
@@ -31,7 +32,9 @@
     "view": "node src/cli.js view",
     "map": "node src/cli.js map",
     "test": "node --test",
-    "demo:view": "node src/cli.js view demo/entries --md && node src/cli.js map demo/entries"
+    "demo:view": "node src/cli.js view demo/entries --md && node src/cli.js map demo/entries",
+    "exam": "node tools/exam/run.mjs",
+    "exam:build": "node tools/exam/build.mjs"
   },
   "engines": {
     "node": ">=20"
