@@ -17,7 +17,8 @@ import { contentHash } from '../src/core/store.js';
  * 但改了要能被发现：没有记录、或者记录对不上，都算未受控。
  *
  * 它防不住「全量重写」（把整个文件删掉重生成，链是自洽的），
- * 那一层靠 git：trace 进版本库，重写会在 diff 里留痕。
+ * 那一层只能靠版本库留痕：trace 进了 git，重写就是一次 commit——
+ * 不是「改不了」，是「改了会多一次 diff」。
  */
 
 const CLI = join(dirname(fileURLToPath(import.meta.url)), '..', 'src', 'cli.js');
