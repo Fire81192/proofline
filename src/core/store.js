@@ -11,7 +11,7 @@
 import { readdir, readFile, writeFile, rename, mkdir, unlink, realpath, stat } from 'node:fs/promises';
 import { parseFrontmatter } from './frontmatter.js';
 import { join, resolve, relative, isAbsolute, dirname, basename } from 'node:path';
-import { appendTrace, readTrace, readHead } from './trace.js';
+import { appendTrace, readTrace, readHead, verifyChain, verifyHead, checkTraceWritable } from './trace.js';
 import { sha256 } from './snapshot.js';
 import { validateEntry } from './validate.js';
 
@@ -323,31 +323,69 @@ async function acquireLock(root, timeoutMs = 8000) {
  * @returns {Promise<{ok:boolean, code?:string, hint?:string}>}
  */
 export async function checkUntrackedChange(root, id, currentText) {
-  const { lines: rawLines } = await readTrace(root).catch(() => ({ lines: [] }));
-  const lines = rawLines ?? [];
+  const trace = await readTrace(root).catch(() => ({ lines: [], error: null }));
+  const lines = trace.lines ?? [];
+
+  // 留痕本身不可信的时候，任何基于它的判断都不作数。
+  //
+  // 以前这里只比「这一条的 after」，于是四种篡改都能过：
+  //   改中间某行的字段      → 这一条的 after 没变，照过（可链早断了）
+  //   改最后一行的 after    → 改成手改内容的哈希，直接对上
+  //   调低 head.count 再删行 → 只拦 count > lines.length，相等就放行
+  //   删掉某条记录          → 「没有记录」被当成「新条目」
+  //
+  // 四种的共同点：**留痕已经不可信，而判断还在拿它当依据**。
+  // 所以先验留痕本身，再谈这一条。
+  if (trace.error) {
+    return {
+      ok: false,
+      code: 'trace_unreadable',
+      hint: `留痕读不了：${trace.error}。读不出来就判断不了这条有没有被改过，所以不写。`
+        + '先 git checkout -- <entries>/.trace.jsonl 恢复，或者 trace --reseal 承认现状。',
+    };
+  }
+
+  const chain = verifyChain(lines);
+  if (!chain.ok) {
+    return {
+      ok: false,
+      code: 'trace_broken',
+      hint: `留痕链在第 ${chain.brokenAt} 行断了（${chain.reason}）——断点往后都不能当依据。`
+        + '先看 git diff 确认是谁改的，再 git checkout -- <entries>/.trace.jsonl 恢复。',
+    };
+  }
+
+  const head = await readHead(root).catch(() => null);
+  const headChk = verifyHead(head, lines);
+  if (!headChk.ok && headChk.kind !== 'absent') {
+    // 三种情况要分开说，因为「怎么办」不一样：
+    //   count  条数对不上 → 有增删
+    //   tail   末行哈希不符 → 末行被改（这时链是完整的，只有链头能发现）
+    //   empty  记录被清空，但链头还在
+    // 以前三种都报成 trace_shrunk「记录比链头少」，
+    // 而「末行被改」跟「被删」完全是两回事，照着提示去做出路会走错。
+    const isTail = headChk.kind === 'tail';
+    const why = headChk.kind === 'count' ? '条数和链头对不上（有增删）'
+      : isTail ? '末行与链头不符（最后一条记录被改过）'
+        : headChk.kind === 'empty' ? '记录被清空，但链头还在'
+          : headChk.reason;
+    return {
+      ok: false,
+      code: isTail ? 'trace_tail_changed' : 'trace_shrunk',
+      hint: `留痕${why}——${headChk.reason}。`
+        + (isTail
+          ? '链本身是完整的，只有链头能发现末行被改，所以别只看链。'
+          : '')
+        + '确认是自己做的：trace --reseal 重建链头；放弃改动：git checkout -- <entries>/.trace.jsonl',
+    };
+  }
+
   const lastRec = lines.filter((l) => l && l.id === id).pop();
 
   if (!lastRec || typeof lastRec.after !== 'string') {
-    // 这条没有记录。两种可能，必须分开：
-    //   ① 它是新条目，还没入过库（老库、adopt 之前）—— 不判
-    //   ② 它本来有记录，被删掉了 —— 这比手改还彻底
-    //
-    // ② 实测过：手改 claim → set 被拒 → 清空 .trace.jsonl → set 通过 → 「受控 是」。
-    // 连 drift 都不留，比 trace --adopt 干净——adopt 至少还记一笔「按现状重新纳入」。
-    //
-    // 用链头做锚区分：head 里记着总条数。head 的条数比现在读到的多，
-    // 说明中间有行被删过。这时「没有记录」不等于「还没入库」。
-    const head = await readHead(root).catch(() => null);
-    if (head?.exists && !head.error && Number.isInteger(head.count) && head.count > lines.length) {
-      return {
-        ok: false,
-        code: 'trace_shrunk',
-        hint: `留痕里原本有 ${head.count} 条记录，现在只读到 ${lines.length} 条——中间有行被删过。`
-          + '删记录等于把「被改过」的证据拿掉，所以这里不写。'
-          + '确认是自己删的：git checkout -- <entries>/.trace.jsonl；'
-          + '确实要按现状重来：trace --reseal 重建链头（这一步本身会显式跑一次）',
-      };
-    }
+    // 到这一步，留痕本身是完整可信的（链通过、链头对得上）。
+    // 「这条没有记录」现在只剩一种解释：它确实还没入过库（老库、adopt 之前）。
+    // 记录被删的情况已经被上面的 count 比对拦掉了。
     return { ok: true };
   }
   if (contentHash(currentText) === lastRec.after) return { ok: true };
@@ -385,6 +423,13 @@ export async function commit({ root, id, text, expect = null, allowCreate = fals
   const release = await acquireLock(root);
   if (!release) return { ok: false, code: 'locked' };
   try {
+  // 留痕写不了就别开始写。
+  //
+  // 放在这里而不是等 appendTrace 报错：那时 entry.md 已经落盘，
+  // 结果是「一条本来合规的写入把条目变成未受控」——比干脆不写更糟。
+  const traceWritable = await checkTraceWritable(root);
+  if (!traceWritable.ok) return traceWritable;
+
   let current = null;
   try {
     current = await readFile(join(dir, ENTRY_FILE), 'utf8');

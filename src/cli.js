@@ -493,6 +493,12 @@ async function cmdCheck(root, fix) {
     out();
     out(`留痕链在第 ${chain.brokenAt} 行断了：${chain.reason}`);
     out('  链断说明记录被改过或被插过；从断点之后的所有记录都不能作数。');
+    // 以前这里只有这一句，而相邻的「链头对不上」分支建议 --reseal——
+    // 于是人会顺手跑 --reseal，看到「已重建链头」以为修好了，再跑 trace 还是断的。
+    // --reseal 只重写 .trace.head，不重算 prev，对链断无效。要说清。
+    out('  这一条 --reseal 修不了（它只重建链头，不重算 prev）。两条出路：');
+    out('    放弃改动：git checkout -- <entries>/.trace.jsonl');
+    out('    接受现状：把断点之后的记录删掉（那一段本来就不作数），再跑 --reseal');
   } else if (uncontrol.length > 0) {
     out();
     out(`未受控 ${uncontrol.length} 条（在工具之外被写或改过，不能当依据）：`);
@@ -520,7 +526,12 @@ async function cmdCheck(root, fix) {
   // 「一条被工具之外改过的条目」在 check 里退出码是 0，任何 CI / pre-commit
   // 都不会拦。而同一个事实在 `set` 上是致命错误（untracked_change）。
   // 同一个状态两种严重度，等于告诉人「绕过只在你想写的时候才算错」。
-  return counts.hard_fail || counts.dirty || uncontrol.length ? 1 : 0;
+  //
+  // 留痕本身坏了也一样要失败：链断、链头对不上、读不出来——
+  // 这三种情况下「未受控 0 条」不等于「全都受控」，只等于「没法判断」。
+  // 以前它们只打印一行警告，退出码照样 0，于是 CI 里一个坏掉的审计链是绿的。
+  const traceBroken = Boolean(trace.error) || !chain.ok || !headChk.ok;
+  return counts.hard_fail || counts.dirty || uncontrol.length || traceBroken ? 1 : 0;
 }
 
 /**
@@ -645,10 +656,30 @@ function explainCommitError(res) {
     return;
   }
   if (res.code === 'trace_shrunk') {
-    out('写入失败：trace_shrunk——留痕里的记录比链头记的少，中间有行被删过。');
-    out('  删记录等于把「被改过」的证据拿掉，比手改还彻底：连 drift 都不留。');
-    out('  确认是自己删的：git checkout -- <entries>/.trace.jsonl');
-    out('  确实要按现状重来：proofline trace --reseal（这一步本身会显式跑一次）');
+    out('写入失败：trace_shrunk——留痕的条数和链头对不上。');
+    out('  要么有记录被删，要么记录被清空但链头还留着。两种都是把证据拿掉。');
+    out('  放弃改动：git checkout -- <entries>/.trace.jsonl');
+    out('  接受现状：proofline trace --reseal 重建链头（这一步本身会显式跑一次）');
+    return;
+  }
+  if (res.code === 'trace_tail_changed') {
+    out('写入失败：trace_tail_changed——最后一条记录的哈希和链头不符，末行被改过。');
+    out('  注意：这时候链是完整的，只有链头能发现它，所以别只看链。');
+    out('  放弃改动：git checkout -- <entries>/.trace.jsonl');
+    out('  接受现状：proofline trace --reseal 重建链头');
+    return;
+  }
+  if (res.code === 'trace_broken') {
+    out('写入失败：trace_broken——留痕链断了，断点往后都不能当依据。');
+    out('  这一条 --reseal 修不了（它只重建链头，不重算 prev）。');
+    out('  放弃改动：git checkout -- <entries>/.trace.jsonl');
+    out('  接受现状：删掉断点之后的记录（那段本来就不作数），再跑 --reseal');
+    return;
+  }
+  if (res.code === 'trace_unreadable') {
+    out('写入失败：trace_unreadable——留痕读不出来，判断不了这条有没有被改过。');
+    out('  放弃改动：git checkout -- <entries>/.trace.jsonl');
+    out('  接受现状：proofline trace --reseal');
     return;
   }
   if (res.code === 'drift') {
@@ -744,20 +775,44 @@ async function buildCitableMap(root, registry) {
  * 读不到留痕时返回 null，不返回「全都不受控」：
  * 读不到是「不知道」，不是「有问题」。不知道就不判，不冤枉人。
  */
-async function buildControlledMap(root) {
+/**
+ * 留痕本身可信吗。
+ *
+ * 三种坏法：读不出来、链断了、链头对不上。任何一种都意味着
+ * 「按留痕判断受不受控」这件事失去依据，而不是「没问题」。
+ *
+ * 抽出来是因为以前三处各写各的：status 只查 error，全库映射查 error，
+ * 证据册什么都不查。于是同一份坏留痕，check 能看见、status 看不见、
+ * 证据册照标「可引用」——一个判断三个答案。
+ */
+async function traceIntegrity(root) {
   const trace = await readTrace(root).catch((err) => ({ lines: [], error: err.message }));
-  // 留痕读不了 → 全部按「未受控」处理。
+  const lines = trace.lines ?? [];
+  if (trace.error) return { bad: `留痕读不了：${trace.error}`, lines };
+  const chain = verifyChain(lines);
+  if (!chain.ok) return { bad: `留痕链在第 ${chain.brokenAt} 行断了（${chain.reason}）`, lines };
+  const head = await readHead(root).catch(() => ({ exists: false, error: null }));
+  const headChk = verifyHead(head, lines);
+  if (!headChk.ok && headChk.kind !== 'absent') {
+    return { bad: `留痕链头对不上（${headChk.reason}）`, lines };
+  }
+  return { bad: null, lines };
+}
+
+async function buildControlledMap(root) {
+  // 留痕本身不可信 → 全部按「未受控」处理。
   //
   // 以前这里返回 null，而 null 让 assessEntry 跳过留痕否决（它只在
   // typeof controlledOf === 'function' 时才判）。于是 trace 一坏，
   // 库里的每一条都还能显示「可引用」——审计链断了，结论反而更宽松。
-  // 这是 fail-open，方向反了。
-  if (trace.error) {
+  // fail-open，方向反了。
+  const { bad, lines } = await traceIntegrity(root);
+  if (bad) {
     const deny = () => false;
-    deny.traceError = trace.error;
+    deny.traceError = bad;
     return deny;
   }
-  const last = lastByEntry(trace.lines);
+  const last = lastByEntry(lines);
   return (id, text) => {
     const rec = last.get(id);
     if (!rec || typeof rec.after !== 'string') return false;
@@ -806,12 +861,12 @@ async function cmdStatus(root, id) {
   // 受控：有没有入库记录、记录对不对得上。
   // 放在「能不能引用」之前，因为它是**否决项**——未受控的条目，
   // 后面那些 supported / citable 都不作数：内容没经过入库闸门，说什么都可能是假的。
-  const trace = await readTrace(root);
-  const lastRec = lastByEntry(trace.lines).get(id) ?? null;
-  // 留痕读坏了，不能拿「坏行之前的那几条记录」当依据——
-  // 这条条目的最后一笔可能就在读不出来的部分里。
-  const ctrl = trace.error
-    ? { controlled: false, kind: 'trace_unreadable', why: `留痕读不了：${trace.error}` }
+  const { bad: traceBad, lines: traceLines } = await traceIntegrity(root);
+  const lastRec = lastByEntry(traceLines).get(id) ?? null;
+  // 留痕本身坏了（读不了 / 链断 / 链头对不上），这一条就不算受控。
+  // 「判断不了」不等于「没问题」——这条规矩在 check / status / 全库映射三处必须一样。
+  const ctrl = traceBad
+    ? { controlled: false, kind: 'trace_bad', why: traceBad }
     : controlState(lastRec?.after ?? null, entry.hash);
 
   out();
@@ -2419,6 +2474,16 @@ async function cmdTrace(root, opts) {
       out('这个库没有留痕记录，没什么可封的。');
       return 0;
     }
+    // 链断的时候 reseal 修不了——只重建链头，不重算 prev。
+    // 不在这里挡住的话，人跑完看到「已重建链头」会以为修好了。
+    const chainNow = verifyChain(lines);
+    if (!chainNow.ok) {
+      out(`链在第 ${chainNow.brokenAt} 行断了（${chainNow.reason}）——reseal 只重建链头，不重算 prev，修不了这个。`);
+      out('  两条出路：');
+      out('    放弃改动：git checkout -- <entries>/.trace.jsonl');
+      out(`    接受现状：删掉第 ${chainNow.brokenAt - 1} 行之后的记录（那段本来就不作数），再跑一次 --reseal`);
+      return 1;
+    }
     await writeHead(root, lineHash(lines[lines.length - 1]), lines.length);
     out(`已重建链头：${lines.length} 条记录。`);
     out('  这只在你确认「改动是自己做的」之后才该跑——它不修复篡改，只是重新承认现状。');
@@ -2891,11 +2956,10 @@ async function buildViewHtml(root, served = false) {
 
   const entries = [];
   // 证据册也要看留痕：未受控的条目不能给人当依据，因为它的内容没经过入库闸门。
-  const viewTrace = await readTrace(root);
-  // 留痕读坏了，不能拿「坏行之前的那几条」当依据——
-  // 这条条目的最后一笔可能就在读不出来的部分里。
-  // 和 buildControlledMap / cmdStatus 同一条规矩：读不了就按未受控。
-  const viewLast = viewTrace.error ? new Map() : lastByEntry(viewTrace.lines);
+  // 而且要和 status 用同一套判断——链断 / 链头不符 也算「留痕不可信」，
+  // 不能只查「读不读得出来」。
+  const { bad: viewBad, lines: viewLines } = await traceIntegrity(root);
+  const viewLast = viewBad ? new Map() : lastByEntry(viewLines);
 
   for (const e of all) {
     if (e.broken) continue;
@@ -2959,12 +3023,29 @@ async function buildViewHtml(root, served = false) {
 
 async function cmdView(root, outPath, asMd = false) {
   const built = await buildViewHtml(root, false);
+  // buildViewHtml 用「返回数字」表示失败，这里必须先用类型挡一下。
+  //
+  // 以前直接解构：2 上取 .stats 得到 undefined，最后 writeFile(target, undefined)
+  // 炸成 TypeError，退出码 3——不在 usage() 承诺的 0/1/2 里。
+  // 同一个失败，open 是干净的 exit 2（serve 那层自己查了目录），只有 view 没查。
+  if (typeof built === 'number') return built;
+  if (!built || typeof built !== 'object') {
+    out('渲染失败：没有拿到可用的数据');
+    return 1;
+  }
   const { stats } = built;
   const text = asMd ? renderViewMd(built.data) : built.html;
   const target = outPath
     ? resolve(outPath)
     : join(root, '..', asMd ? '证据册.md' : '证据册.html');
-  await writeFile(target, text, 'utf8');
+  try {
+    await writeFile(target, text, 'utf8');
+  } catch (err) {
+    // 写不了也是「用法错误」级别：路径不对、盘不存在、没有权限。
+    // 以前这条会变成内部错误堆栈，让人以为是工具的 bug。
+    out(`写不了 ${target}：${err.message}`);
+    return 2;
+  }
   out(`已生成 ${target}`);
   out(`  ${stats.entries} 条主张 / ${stats.sources} 个来源 / ${stats.citable} 条可引用 / ${stats.decisive} 条可判定`);
   return 0;

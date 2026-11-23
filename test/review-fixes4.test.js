@@ -74,7 +74,7 @@ test('留痕被删：写入被拒（trace_shrunk），不是「没有记录就�
   const r = cli(['set', '2026-01-01-demo', 'topic', 'b', root]);
   assert.equal(r.code, 1, '删记录之后不能放行');
   assert.match(r.out, /trace_shrunk/);
-  assert.match(r.out, /被删过/);
+  assert.match(r.out, /有记录被删|条数和链头对不上/);
 
   // 但要给出路：reseal 清掉过期链头之后能继续（这一步就是承认删过）
   assert.match(cli(['trace', root, '--reseal']).out, /链头已清掉/);

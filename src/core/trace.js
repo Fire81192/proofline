@@ -26,7 +26,7 @@
  * 前提是：你真的 commit，而且有远程副本。没有这两样，这条就只是设计承诺。
  */
 
-import { readFile, mkdir, appendFile, writeFile, rm, stat } from 'node:fs/promises';
+import { readFile, mkdir, appendFile, writeFile, rm, stat, rename } from 'node:fs/promises';
 import { join } from 'node:path';
 import { sha256 } from './snapshot.js';
 
@@ -151,6 +151,47 @@ async function acquireTraceLock(root, timeoutMs = 3000) {
  * 但「重读」只解决顺序写，解决不了同时写：两个调用都在 await 里读到同样的
  * lines，就会算出同样的 prev。所以外面必须包一层锁。
  */
+/**
+ * 这个文件是不是被硬链接到别的路径。
+ *
+ * `realpath` 对它没用：硬链接没有「真实路径」这个概念，它就是同一个 inode 的另一个名字。
+ * 所以路径检查全过——然后 appendFile 一写，库外那份跟着变。
+ *
+ * 本工具写的东西（trace、链头、entry.md）都不该有第二个名字。
+ * 有就说明有人在库外挂了钩子，拒绝比放行好。
+ */
+async function hasOtherNames(p) {
+  try {
+    const st = await stat(p);
+    return st.nlink > 1 ? st.nlink : 0;
+  } catch (err) {
+    if (err.code === 'ENOENT') return 0;
+    throw err;
+  }
+}
+
+/**
+ * 留痕文件能不能写。写不了就别开始写条目。
+ *
+ * 现在的唯一理由是硬链接：`.trace.jsonl` 如果是同一个 inode 的第二个名字，
+ * `appendFile` 会连库外那份一起写。而这件事**在写 entry.md 之后才发现就晚了**——
+ * 条目已经改好，留痕没记上，结果是「一条本来合规的写入把条目变成未受控」。
+ *
+ * 所以放在 commit 的最前面：写不了就整个不写。
+ */
+export async function checkTraceWritable(root) {
+  const nlink = await hasOtherNames(join(root, TRACE_FILE));
+  if (nlink > 1) {
+    return {
+      ok: false,
+      code: 'trace_hardlinked',
+      hint: `${TRACE_FILE} 有 ${nlink} 个名字指向同一个文件——往里追加会写到库外。`
+        + '先把它换回普通文件：删掉这个路径，再让工具重新写一份（或从 git 恢复）',
+    };
+  }
+  return { ok: true };
+}
+
 export async function appendTrace(root, { op, id, after, at = new Date().toISOString(), note = null }) {
   await mkdir(root, { recursive: true });
   const release = await acquireTraceLock(root);
@@ -158,6 +199,16 @@ export async function appendTrace(root, { op, id, after, at = new Date().toISOSt
     return { ok: false, error: '留痕正被另一个进程写（.trace.lock 超时）——稍后重试' };
   }
   try {
+    // appendFile 只能写到 inode，换不掉目标；所以硬链接这条只能在写之前拦。
+    const nlink = await hasOtherNames(join(root, TRACE_FILE));
+    if (nlink > 1) {
+      return {
+        ok: false,
+        error: `${TRACE_FILE} 有 ${nlink} 个名字指向同一个文件——追加会写到库外。`
+          + '先把这个硬链接换回普通文件（rm 之后重新写入），再重试',
+      };
+    }
+
     const { lines, error } = await readTrace(root);
     if (error) return { ok: false, error };
 
@@ -191,7 +242,15 @@ export async function readHead(root) {
 }
 
 export async function writeHead(root, head, count) {
-  await writeFile(join(root, HEAD_FILE), JSON.stringify({ v: 1, head, count }) + '\n', 'utf8');
+  const target = join(root, HEAD_FILE);
+  // 用「写临时文件 + rename」而不是直接 writeFile。
+  //
+  // writeFile 是截断写，跟着 inode 走：`.trace.head` 如果是个指向库外的硬链接，
+  // 库外那个文件会被覆盖成链头 JSON——一个「路径检查全过」的写库外。
+  // rename 换的是目录项，旧 inode 一个字节都不碰。
+  const tmp = `${target}.${process.pid}.${Date.now()}.tmp`;
+  await writeFile(tmp, JSON.stringify({ v: 1, head, count }) + '\n', 'utf8');
+  await rename(tmp, target);
 }
 
 /**

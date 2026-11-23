@@ -1,7 +1,7 @@
 # 完整说明
 
 从定位、启动、建条目、判定、组织结构到输出，全部在这里。
-新人建议先读 README 的「快速开始」，再按需跳转。
+新人建议先读 README 的「30 秒上手」，再按需跳转。
 
 ---
 
@@ -269,7 +269,7 @@ node src/cli.js status <id> entries     # 这条现在还能不能用
 node src/cli.js index  entries          # 生成 INDEX.md
 node src/cli.js new    <id> --spec s.json
 node src/cli.js import <id> --paper <论文目录> --claim "..." --quote "..."
-node src/cli.js import <id> --code  <代码目录> --claim "..." --quote "..." --url <仓库>"
+node src/cli.js import <id> --code  <代码目录> --claim "..." --quote "..." --url <仓库>
 node src/cli.js corroborate <id> --source <文件> --uri <地址> --quote "..."
 node src/cli.js set    <id> <字段> <值>  # 改判定字段，带版本保护
 node src/cli.js scan   <目录> --project <p> [--advise] [--commit]
@@ -278,7 +278,7 @@ node src/cli.js log    <p>              # 插话历史（重放得出）
 node src/cli.js fields                  # 字段契约
 ```
 
-退出码沿用一条老约定：`0` 全过 / `1` 有 hard_fail 或 dirty / `2` 用法错。
+退出码沿用一条老约定：`0` 全过 / `1` 有 hard_fail、dirty **或未受控** / `2` 用法错 / `3` 内部错误。
 好让脚本和 agent 直接判断，不用解析输出。
 
 ---
@@ -1453,7 +1453,7 @@ OCR 会把「重要参考数据」断成「重要参考 数据」。人写引文
 
 ## 它还很小
 
-源码约 9,600 行、测试约 6,000 行、531 个测试。**这些数字会漂，以 `proofline stats` 现算的为准**——
+源码约 9,600 行、测试约 6,000 行、531 个测试。**这些数字会漂**：行数和模块数以 `proofline stats` 现算的为准，测试数以 `node --test` 的输出为准（`stats` 不跑测试，所以它给不出这个数）。
 这里写的是 2026-11 的读数，上一版写「4993 行 / 269 个测试」，半年后就成了假话。
 
 实现了这些：引文三级定位、四态校验、双维度状态、写入防覆盖、从已有工具接进来、

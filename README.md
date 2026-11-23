@@ -38,7 +38,7 @@ cd proofline
 npm run demo
 ```
 
-`demo` 会跑三步：先看一个干净的库，然后**手改一条 entry.md**（模拟绕过工具），再 check 一次。
+`demo` 会跑四步：先看一个干净的库，然后**手改一条 entry.md**（模拟绕过工具），再 check 一次，最后把改动恢复原样。
 
 ```
 ① 现在这个库是干净的
