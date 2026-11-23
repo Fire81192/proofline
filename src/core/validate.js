@@ -26,6 +26,10 @@ import {
   SOURCE_EXTRACTIONS, SOURCE_KINDS, VERDICTS,
 } from './schema.js';
 
+/** 路径不合规时统一加这句：说清怎么改，不让人对着报错猜。 */
+const PATH_HINT = '\n  用正斜杠写，例如 raw/verify-1.txt。反斜杠和盘符路径都不接受——'
+  + '它们在不同平台上含义不同，路径必须是可移植的。';
+
 const PARTIAL_DATE = /^(\d{4})(?:-(\d{1,2}))?(?:-(\d{1,2}))?$/;
 
 /** 日期范围自洽：2026-13-45 形状对但不存在。 */
@@ -586,7 +590,7 @@ export function validateEntry({ dirName, text, snapshotText, readSnapshot = null
         c.snapshot.includes('\\') ||
         /^[A-Za-z]:/.test(c.snapshot); // 盘符 + 正斜杠这种写法，原来漏了
       if (unsafePath) {
-        fail(`${at} 的 snapshot 路径不安全（必须是条目目录内的相对路径）：${c.snapshot}`);
+        fail(`${at} 的 snapshot 路径不安全（必须是条目目录内的相对路径）：${c.snapshot}${PATH_HINT}`);
         return;
       }
       // 有佐证却读不到佐证快照，等于没法核。不许静默放行。
@@ -629,7 +633,7 @@ export function validateEntry({ dirName, text, snapshotText, readSnapshot = null
           r.script.includes('\\') ||
           /^[A-Za-z]:/.test(r.script);
         if (unsafe) {
-          fail(`${at} 的 script 路径不安全（必须是 workspace 内的相对路径）：${r.script}`);
+          fail(`${at} 的 script 路径不安全（必须是 workspace 内的相对路径）：${r.script}${PATH_HINT}`);
         }
       } else if ('script' in r) {
         fail(`${at} 的 script 必须是非空字符串`);
@@ -650,7 +654,7 @@ export function validateEntry({ dirName, text, snapshotText, readSnapshot = null
           r.output.includes('\\') ||
           /^[A-Za-z]:/.test(r.output);
         if (unsafe) {
-          fail(`${at} 的 output 路径不安全（必须是条目目录内的相对路径）：${r.output}`);
+          fail(`${at} 的 output 路径不安全（必须是条目目录内的相对路径）：${r.output}${PATH_HINT}`);
         }
       } else if ('output' in r) {
         fail(`${at} 的 output 必须是非空字符串`);
@@ -685,7 +689,7 @@ export function validateEntry({ dirName, text, snapshotText, readSnapshot = null
               inp.path.includes('..') ||
               inp.path.includes('\\') ||
               /^[A-Za-z]:/.test(inp.path);
-            if (unsafe) fail(`${where} 的 path 路径不安全（必须是 workspace 内的相对路径）：${inp.path}`);
+            if (unsafe) fail(`${where} 的 path 路径不安全（必须是 workspace 内的相对路径）：${inp.path}${PATH_HINT}`);
             if (typeof inp.sha256 !== 'string' || !SHA256_RE.test(inp.sha256)) {
               fail(`${where} 的 sha256 不是 64 位小写十六进制`);
             }

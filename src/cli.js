@@ -329,6 +329,24 @@ async function cmdCheck(root, fix) {
     }
   }
 
+  // 指向不存在的条目：id 写错了，或者那条从来没建过。
+  //
+  // 跟「指向已退役」不是一回事：退役是「东西还在，只是不用了」，
+  // 不存在是「压根没有这个东西」——prereq 指向它，等于一句空话。
+  // 以前只查前者，因为 `retiredIds.has(p)` 对不存在的 id 返回 false，
+  // 静默通过。全库已经有 knownIds，查一下是一行的事。
+  const missing = [];
+  for (const e of all) {
+    if (!Array.isArray(e.data?.prereq)) continue;
+    for (const p of e.data.prereq) if (!knownIds.has(p)) missing.push({ from: e.id, to: p });
+  }
+  if (missing.length > 0) {
+    out();
+    out(`前置指向不存在的条目（${missing.length} 处）：`);
+    for (const m of missing) out(`  ${m.from}  →  ${m.to}（没有这条）`);
+    out('  id 写错了，或者那条从来没建过。指向一个不存在的东西，等于没写。');
+  }
+
   // 接替关系也要查。`retire --by` 只在写入那一刻看目标在不在，
   // 之后目标被删、被退役、或者两条互相接替，它一概不知道。
   //
