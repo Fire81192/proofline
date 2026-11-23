@@ -11,7 +11,7 @@
 import { readdir, readFile, writeFile, rename, mkdir, unlink, realpath, stat } from 'node:fs/promises';
 import { parseFrontmatter } from './frontmatter.js';
 import { join, resolve, relative, isAbsolute, dirname } from 'node:path';
-import { appendTrace } from './trace.js';
+import { appendTrace, readTrace } from './trace.js';
 import { sha256 } from './snapshot.js';
 import { validateEntry } from './validate.js';
 
@@ -318,6 +318,31 @@ export async function commit({ root, id, text, expect = null, allowCreate = fals
   }
   if (current !== null && contentHash(current) !== expect) {
     return { ok: false, code: 'drift', expected: expect, currentHash: contentHash(current) };
+  }
+
+  // 留痕基准：这条上次入库时是什么内容。
+  //
+  // `expect` 是调用方给的，而 `set` / `run` / `corroborate` 都拿「当前文件的哈希」
+  // 当 expect——自己跟自己比，永远相等，那一关形同虚设。
+  //
+  // 真正该比的是 trace 里记的 `after`：它是上次入库那一刻的内容。
+  // 两者不一致，说明文件在这之间被工具之外的东西改过。
+  //
+  // 不拦的话，手改 claim → 跑一次 set topic → 手改就被「接受」成受控版本，
+  // 留痕等于白记。实测确认过这条路是通的，所以必须堵在这里：
+  // 一处改动，set / run / corroborate / retire / fix 五条写入路径一起管住。
+  if (current !== null) {
+    const { lines: traceLines } = await readTrace(root).catch(() => ({ lines: [] }));
+    const lastRec = traceLines.filter((l) => l && l.id === id).pop();
+    // 没有记录的不判：老库、adopt 之前的历史条目都属这一类。
+    // 「不知道」不等于「有问题」。
+    if (lastRec && typeof lastRec.after === 'string' && contentHash(current) !== lastRec.after) {
+      return {
+        ok: false,
+        code: 'untracked_change',
+        hint: '文件内容和上次入库记录不符——在工具之外被改过。接受现状：proofline trace --adopt；放弃改动：git checkout 这个文件',
+      };
+    }
   }
 
   let snapshotText = null;

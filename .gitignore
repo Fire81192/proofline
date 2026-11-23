@@ -1,5 +1,6 @@
 node_modules/
 *.tmp
+_msg*.txt
 
 # 生成的页面（可随时重建）
 demo/课程地图.html

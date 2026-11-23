@@ -570,7 +570,46 @@ function sourceStatusOf(registry, data) {
   return { status, reason: rec.reason ?? null, blocking: status !== '在用' };
 }
 
-function assessEntry(entry, name, registry = {}, citableOf = null) {
+
+/**
+ * 写入失败时，把「为什么」和「怎么办」都说出来。
+ *
+ * 只报一个错误码等于让人猜——而这个工具的每一条拒绝都该有出路。
+ */
+function explainCommitError(res) {
+  if (res.code === 'untracked_change') {
+    // 错误码留着：脚本和 CI 靠它判断；后面是人话。
+    out('写入失败：untracked_change——文件内容和上次入库记录不符（在工具之外被改过）。');
+    out('  留痕的意义是「每次写入都基于上次记录的状态」，所以这里不吞下改动。');
+    out('  接受现状（把现在的内容当成新基线）：proofline trace --adopt');
+    out('  放弃改动（回到入库时的样子）：git checkout -- <这个条目目录>');
+    return;
+  }
+  if (res.code === 'drift') {
+    out('写入失败：文件在你读它之后被改过（并发写入）。重跑一次这条命令。');
+    return;
+  }
+  if (res.code === 'locked') {
+    out('写入失败：库被另一个进程锁着。等几秒重试，或者删掉 entries/.lock（确认没有别的写入在跑）。');
+    return;
+  }
+  out(`写入失败：${res.code}`);
+}
+
+/**
+ * 算一条的形状与判定。
+ *
+ * `controlledOf` 是第五个参数，只在「输出里会写『可引用』三个字」的地方传。
+ *
+ * 为什么需要它：`deriveStatus` 只管两个维度（来源说过没、世界真不真），
+ * 它读不到留痕——留痕在 `.trace.jsonl` 里，是库级的东西。
+ * 结果就是 `status` 判「未受控、不给引用」，而 `index` / `review` / 地图
+ * 走的是同一个 `deriveStatus`，照样标「可引用」。同一件事，两套口径。
+ *
+ * 接口 `status` 自己算留痕（它要单独显示「受控」那一行），所以不传这个参数。
+ * 其余输出必须传，否则主张 3 只在半个工具里成立。
+ */
+function assessEntry(entry, name, registry = {}, citableOf = null, controlledOf = null) {
   try {
     const shape = validateEntry({
       dirName: name, text: entry.text, snapshotText: entry.snapshotText,
@@ -582,6 +621,21 @@ function assessEntry(entry, name, registry = {}, citableOf = null) {
       sourceStatus: sourceStatusOf(registry, shape.data),
       citableOf,
     });
+
+    // 未受控 = 内容和上次入库记录不符。它和「引文没了」是两回事，
+    // 但对「能不能引用」的结论一样：不能。所以在这里压一次，
+    // 让所有走 assessEntry 的输出自动对齐，不用每个命令各写一遍。
+    if (typeof controlledOf === 'function' && !controlledOf(name, entry.text)) {
+      derived.citable = false;
+      derived.controlled = false;
+      derived.reasons = derived.reasons ?? [];
+      derived.reasons.push({
+        dimension: 'evidence',
+        code: 'untracked',
+        detail: '内容和上次入库记录不符——在工具之外被改过，不算依据',
+      });
+    }
+
     // 视图要的是「卡在哪」的具体一句话，不是数量
     const blockingList = (derived.gaps ?? [])
       .filter((g) => g && g.blocking !== false && (g.dimension === undefined || g.dimension === 'evidence' || g.dimension === 'world'))
@@ -611,6 +665,26 @@ async function buildCitableMap(root, registry) {
     map.set(e.id, derived ? Boolean(derived.citable) : false);
   }
   return (id) => (map.has(id) ? map.get(id) : null);
+}
+
+/**
+ * 全库的「这条受不受控」映射。
+ *
+ * trace 最后一条的 `after` 就是这条内容上次入库时的哈希——它才是「应该长什么样」。
+ * 和当前文件比对，不一样就是被抓改过。
+ *
+ * 读不到留痕时返回 null，不返回「全都不受控」：
+ * 读不到是「不知道」，不是「有问题」。不知道就不判，不冤枉人。
+ */
+async function buildControlledMap(root) {
+  const trace = await readTrace(root).catch(() => null);
+  if (!trace || trace.error) return null;
+  const last = lastByEntry(trace.lines);
+  return (id, text) => {
+    const rec = last.get(id);
+    if (!rec || typeof rec.after !== 'string') return false;
+    return rec.after === contentHash(text);
+  };
 }
 
 async function cmdStatus(root, id) {
@@ -761,12 +835,13 @@ async function cmdStatus(root, id) {
 async function cmdIndex(root) {
   if (!(await ensureDir(root, '条目目录'))) return 2;
   const registry = await readSources(root);
+  const controlledOf = await buildControlledMap(root);
   const dirs = await listEntryDirs(root);
   const rows = [];
   for (const name of dirs) {
     const entry = await readEntry(root, name);
     if (!entry) continue;
-    const { shape, derived: s, parseError } = assessEntry(entry, name, registry);
+    const { shape, derived: s, parseError } = assessEntry(entry, name, registry, null, controlledOf);
     if (parseError) {
       rows.push(`- （解析失败，不可用）  \n  \`${name}\` · ${parseError.slice(0, 60)} · 不可用`);
       continue;
@@ -815,7 +890,7 @@ async function cmdNew(root, id, specPath) {
       out('形状还不合规，先修：');
       for (const a of result.autofixes) out(`  ${a}`);
     } else {
-      out(`写入失败：${result.code}`);
+      explainCommitError(result);
     }
     return 1;
   }
@@ -886,7 +961,7 @@ async function cmdImport(root, id, paperDir, opts) {
       out('形状还不合规，先修：');
       for (const a of result.autofixes) out(`  ${a}`);
     } else {
-      out(`写入失败：${result.code}`);
+      explainCommitError(result);
     }
     return 1;
   }
@@ -944,7 +1019,7 @@ async function cmdCorroborate(root, id, opts) {
     } else if (res.code === 'drift') {
       out(`版本对不上：你手上是 ${res.expected}，磁盘上是 ${res.currentHash}`);
     } else {
-      out(`写入失败：${res.code}`);
+      explainCommitError(res);
     }
     return 1;
   }
@@ -1265,7 +1340,7 @@ async function cmdRun(root, id, opts) {
     } else if (res.code === 'drift') {
       out(`版本对不上：你手上是 ${res.expected}，磁盘上是 ${res.currentHash}`);
     } else {
-      out(`写入失败：${res.code}`);
+      explainCommitError(res);
     }
     return 1;
   }
@@ -1351,7 +1426,7 @@ async function cmdSet(root, id, field, rawValue, patch = null) {
     } else if (res.code === 'drift') {
       out(`版本对不上：你手上是 ${res.expected}，磁盘上是 ${res.currentHash}`);
     } else {
-      out(`写入失败：${res.code}`);
+      explainCommitError(res);
     }
     return 1;
   }
@@ -1590,6 +1665,7 @@ async function cmdAudit(root, opts) {
 async function collectItems(root, registry = {}) {
   const names = await listEntryDirs(root);
   const citableOf = await buildCitableMap(root, registry);
+  const controlledOf = await buildControlledMap(root);
   const items = [];
   for (const name of names) {
     const entry = await readEntry(root, name).catch(() => null);
@@ -1600,7 +1676,7 @@ async function collectItems(root, registry = {}) {
     } catch {
       continue; // 坏 frontmatter 由 check 报，这里不重复叫
     }
-    const { shape, derived } = assessEntry(entry, name, registry, citableOf);
+    const { shape, derived } = assessEntry(entry, name, registry, citableOf, controlledOf);
     if (!derived) continue;
     const blocked = shape?.status === 'hard_fail';
     items.push({
@@ -2308,12 +2384,13 @@ async function cmdProjects(dir, asJson) {
 
     const registry = await readSources(root).catch(() => ({}));
     const all = await loadAllEntries(root).catch(() => []);
+    const controlledOf = await buildControlledMap(root);
     let pass = 0;
     let citable = 0;
     let decisive = 0;
     let hard = 0;
     for (const e of all) {
-      const { shape, derived } = assessEntry(e.entry, e.id, registry);
+      const { shape, derived } = assessEntry(e.entry, e.id, registry, null, controlledOf);
       if (shape?.status === 'pass') pass += 1;
       if (shape?.status === 'hard_fail') hard += 1;
       if (derived?.citable) citable += 1;

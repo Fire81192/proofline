@@ -2,7 +2,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, writeFile, readFile, appendFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { execFileSync } from 'node:child_process';
 
 import { appendTrace, readTrace, verifyChain, readHead, verifyHead, lineHash } from '../src/core/trace.js';
 import { deriveStatus } from '../src/core/status.js';
@@ -171,4 +173,80 @@ test('佐证：同内容换文件名，仍然只算一份', () => {
     uri: 'https://another.example.com',
   };
   assert.equal(mk([c, other]).world_basis_detail.corroborations, 2);
+});
+
+// ---- GLM 审查抓到的两条：输出口径不一致、手改可被一次工具写入洗白 ----
+
+const CLI2 = join(dirname(fileURLToPath(import.meta.url)), '..', 'src', 'cli.js');
+const cliRun = (args) => {
+  try {
+    return { code: 0, out: execFileSync(process.execPath, [CLI2, ...args], { encoding: 'utf8', stdio: 'pipe' }) };
+  } catch (err) {
+    return { code: err.status ?? 1, out: (err.stdout ?? '') + (err.stderr ?? '') };
+  }
+};
+
+/** demo 那条沸点条目的原文（虚构材料，和 demo 库一致）。 */
+const BOIL = `沸点小记（虚构材料，仅供演示）
+
+标准大气压（101.325 kPa）下，纯水的沸点是 100 ℃。
+气压降低时沸点随之降低：海拔每升高约 300 米，沸点下降约 1 ℃。`;
+
+/** 建一条「正常入库」的条目：有 entry.md、有快照、有 trace 记录。 */
+async function seed(root, id) {
+  const { createEntry } = await import('../src/create.js');
+  const r = await createEntry({
+    root, id,
+    spec: {
+      claim: '标准大气压（101.325 kPa）下，纯水的沸点是 100 ℃',
+      kind: '原理', layer: '标准', basis: '条目', topic: 'demo.boiling',
+      source_kind: '其他', source_extraction: '原文',
+      source_uri: 'demo://沸点小记',
+      snapshot_text: BOIL,
+      quotes: ['标准大气压（101.325 kPa）下，纯水的沸点是 100 ℃。'],
+      evidence_status: 'supported', world_status: 'unresolved',
+      added_at: '2026-01-01',
+    },
+  });
+  assert.equal(r.ok, true, `seed 失败：${r.code}`);
+  return join(root, id, 'entry.md');
+}
+
+test('手改之后：status / index / stats 三个输出口径一致', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'pl-untracked-'));
+  const file = await seed(root, '2026-01-01-a');
+
+  // 改之前：可引用
+  assert.match(cliRun(['status', '2026-01-01-a', root]).out, /能引用\s+是/);
+
+  await writeFile(file, (await readFile(file, 'utf8')).replace('沸点是 100 ℃', '沸点是 120 ℃'), 'utf8');
+
+  // status 一票否决
+  const st = cliRun(['status', '2026-01-01-a', root]).out;
+  assert.match(st, /受控\s+否/);
+  assert.match(st, /能引用\s+否/);
+
+  // index 必须跟着否 —— 以前它走 deriveStatus，不知道留痕这回事，照标「可引用」
+  cliRun(['index', root]);
+  const idx = await readFile(join(root, 'INDEX.md'), 'utf8');
+  assert.doesNotMatch(idx, /可引用/, 'index 不能把未受控的条目标成可引用');
+
+  // stats 的可引用数必须是 0
+  assert.match(cliRun(['stats', root]).out, /引用\s+0/);
+});
+
+test('手改之后跑 set：被拒，不能洗白', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'pl-launder-'));
+  const file = await seed(root, '2026-01-01-b');
+
+  await writeFile(file, (await readFile(file, 'utf8')).replace('100 ℃', '120 ℃'), 'utf8');
+
+  // 以前的洗白路径：set 拿「当前文件的哈希」当 expect，自己跟自己比，永远通过
+  const r = cliRun(['set', '2026-01-01-b', 'topic', 'demo.x', root]);
+  assert.equal(r.code, 1);
+  assert.match(r.out, /untracked_change/);
+  assert.match(r.out, /trace --adopt/, '报错要说怎么接受现状');
+
+  // 拒了之后状态不能变
+  assert.match(cliRun(['status', '2026-01-01-b', root]).out, /受控\s+否/);
 });

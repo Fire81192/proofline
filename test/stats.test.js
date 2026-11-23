@@ -1,12 +1,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdtemp, mkdir, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { buildEntry, SNAPSHOT } from './helpers.js';
+import { appendTrace } from '../src/core/trace.js';
+import { contentHash } from '../src/core/store.js';
 
 /**
  * 数字总览。
@@ -40,6 +42,13 @@ async function makeLib(base, name, entries) {
     await mkdir(join(dir, 'raw'), { recursive: true });
     await writeFile(join(dir, 'entry.md'), buildEntry({ ...e }), 'utf8');
     await writeFile(join(dir, 'raw', 'source.txt'), SNAPSHOT, 'utf8');
+    // 顺手留一条入库记录。没有 trace 的条目现在是「未受控」——
+    // 那是对的做法（从没用过工具的库，所有条目都不该算依据），
+    // 但这个测试要的是「正常入库的库」，所以补齐。
+    await appendTrace(root, {
+      op: 'create', id: e.id,
+      after: contentHash(await readFile(join(dir, 'entry.md'), 'utf8')),
+    });
   }
   return root;
 }
