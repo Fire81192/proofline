@@ -152,3 +152,25 @@ test('留痕：lineHash 只认固定字段顺序，多一个字段不会改变�
   const b = { ...a, extra: 'ignored' };
   assert.equal(lineHash(a), lineHash(b));
 });
+
+test('留痕：并发追加不断链（.trace.lock）', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'pl-race-'));
+  const N = 20;
+
+  // 修之前实测：20 条全落盘，但相邻重复 prev 有 19 处，verifyChain 判「第 1 行之后被改动或插入」。
+  // 根因是「读全链 → 算 prev → 追加」之间隔着 await，两个调用读到同样的 lines。
+  await Promise.all(
+    Array.from({ length: N }, (_, i) => appendTrace(root, { op: 'race', id: `id-${i}`, after: `hash-${i}` })),
+  );
+
+  const { lines } = await readTrace(root);
+  assert.equal(lines.length, N, '一条都不能丢');
+
+  const v = verifyChain(lines);
+  assert.ok(v.ok, `链必须完整：${v.reason ?? JSON.stringify(v)}`);
+
+  // 相邻 prev 重复 = 两条指向同一个前驱 = 分叉
+  let dup = 0;
+  for (let i = 1; i < lines.length; i += 1) if (lines[i].prev === lines[i - 1].prev) dup += 1;
+  assert.equal(dup, 0, '不能有两条指向同一个前驱');
+});

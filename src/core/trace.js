@@ -17,7 +17,7 @@
  * 两道合起来才闭合：链保证「局部没被动过」，git 保证「链本身没被换掉」。
  */
 
-import { readFile, mkdir, appendFile, writeFile } from 'node:fs/promises';
+import { readFile, mkdir, appendFile, writeFile, rm, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { sha256 } from './snapshot.js';
 
@@ -84,27 +84,87 @@ export function verifyChain(lines) {
 }
 
 /**
+ * trace 的写锁。
+ *
+ * ## 为什么需要
+ *
+ * `appendTrace` 的流程是「读全链 → 算 prev → 追加」。读和写之间隔着 await，
+ * 两个调用同时进来会读到同样的 lines、算出同样的 prev，于是两条记录指向同一个
+ * 前驱——链被拆成一堆孤立节点。
+ *
+ * 实测：并发 20 次，20 条全落盘（appendFile 是 O_APPEND，单行写入原子），
+ * 但相邻重复 prev 有 19 处，`verifyChain` 直接判「第 1 行之后被改动或插入」。
+ *
+ * 注释原本写着「每次重读一遍不缓存，缓存会让别人刚写过一行变成断链」——
+ * 那是只考虑了**顺序**写，没考虑**同时**写。
+ *
+ * ## 为什么不复用 store.js 的 entries/.lock
+ *
+ * commit 持着 entries 锁调 appendTrace，再拿同一把会死锁。
+ * 两把独立的锁、获取顺序固定（先 entries 后 trace），不会成环。
+ *
+ * 为什么不把两边抽成一个公共函数：store.js 那把已经被 520 个测试覆盖，
+ * 为了省 20 行去动它，风险大于收益。
+ */
+async function acquireTraceLock(root, timeoutMs = 3000) {
+  const p = join(root, '.trace.lock');
+  const start = Date.now();
+  for (;;) {
+    try {
+      // wx = 只在文件不存在时创建。拿不到就说明别人在写。
+      await writeFile(p, String(process.pid), { flag: 'wx' });
+      return async () => {
+        await rm(p, { force: true }).catch(() => {});
+      };
+    } catch (err) {
+      if (err.code !== 'EEXIST') throw err;
+      // 僵尸锁：进程崩了没删。超过 10 秒当它失效——比一直卡住好。
+      try {
+        const st = await stat(p);
+        if (Date.now() - st.mtimeMs > 10_000) {
+          await rm(p, { force: true });
+          continue;
+        }
+      } catch { /* 刚好被删了，下一轮能拿到 */ }
+      if (Date.now() - start > timeoutMs) return null;
+      await new Promise((r) => { setTimeout(r, 5); });
+    }
+  }
+}
+
+/**
  * 追加一条记录。
  *
  * 每次都要重读一遍拿上一行的哈希——不缓存。
  * 缓存会让「别人刚写过一行」变成断链，而那种断链是假警报。
+ *
+ * 但「重读」只解决顺序写，解决不了同时写：两个调用都在 await 里读到同样的
+ * lines，就会算出同样的 prev。所以外面必须包一层锁。
  */
 export async function appendTrace(root, { op, id, after, at = new Date().toISOString(), note = null }) {
-  const { lines, error } = await readTrace(root);
-  if (error) return { ok: false, error };
-
-  const prev = lines.length > 0 ? lineHash(lines[lines.length - 1]) : '';
-  const rec = { v: 1, at, op, id, after, prev };
-  if (note) rec.note = note;
-
   await mkdir(root, { recursive: true });
-  await appendFile(join(root, TRACE_FILE), `${JSON.stringify(rec)}\n`, 'utf8');
+  const release = await acquireTraceLock(root);
+  if (!release) {
+    return { ok: false, error: '留痕正被另一个进程写（.trace.lock 超时）——稍后重试' };
+  }
+  try {
+    const { lines, error } = await readTrace(root);
+    if (error) return { ok: false, error };
 
-  // 同步链头。写失败不让追加失败——记录已经落盘，head 落后只会让 check 报一次
-  // 「链头对不上」，那是保守的一边，不会让绕过变成通过。
-  await writeHead(root, lineHash(rec), lines.length + 1).catch(() => {});
+    const prev = lines.length > 0 ? lineHash(lines[lines.length - 1]) : '';
+    const rec = { v: 1, at, op, id, after, prev };
+    if (note) rec.note = note;
 
-  return { ok: true, record: rec };
+    await appendFile(join(root, TRACE_FILE), `${JSON.stringify(rec)}\n`, 'utf8');
+
+    // 同步链头。写失败不让追加失败——记录已经落盘，head 落后只会让 check 报一次
+    // 「链头对不上」，那是保守的一边，不会让绕过变成通过。
+    await writeHead(root, lineHash(rec), lines.length + 1).catch(() => {});
+
+    return { ok: true, record: rec };
+  } finally {
+    await release();
+  }
 }
 
 /** 读链头。没有文件 = 这个库从没写过留痕（老库），不是错。 */
