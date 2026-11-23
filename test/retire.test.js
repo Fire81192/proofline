@@ -12,6 +12,7 @@ import { KEY_ORDER, retiredOf } from '../src/core/schema.js';
 import { deriveStatus } from '../src/core/status.js';
 import { validateEntry } from '../src/core/validate.js';
 import { groupByTopic } from '../src/topics.js';
+import { seedTrace } from './helpers.js';
 
 /**
  * 条目退役。
@@ -63,6 +64,8 @@ async function addEntry(root, id, overrides = {}) {
   }
   for (const k of Object.keys(data)) if (data[k] === undefined) delete data[k];
   await writeFile(join(dir, 'entry.md'), joinFrontmatter(data, '', KEY_ORDER), 'utf8');
+  // 手写库也算「工具建出来的库」：不补这笔，条目标未受控，check 退出码变 1。
+  await seedTrace(root, dir, id);
   return dir;
 }
 

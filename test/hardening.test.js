@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { buildEntry, SNAPSHOT } from './helpers.js';
+import { buildEntry, SNAPSHOT, seedTrace } from './helpers.js';
 import { auditDir } from '../src/audit.js';
 
 /**
@@ -44,6 +44,7 @@ async function lib(extra = {}) {
   await mkdir(join(dir, 'raw'), { recursive: true });
   await writeFile(join(dir, 'entry.md'), buildEntry({ id: id('a') }), 'utf8');
   await writeFile(join(dir, 'raw', 'source.txt'), SNAPSHOT, 'utf8');
+  await seedTrace(root, dir, id('a'));
   if (extra.map) {
     await writeFile(join(base, 'lib', 'knowledge-map.json'), JSON.stringify(extra.map), 'utf8');
   }

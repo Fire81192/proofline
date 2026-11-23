@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { buildEntry, SNAPSHOT } from './helpers.js';
+import {buildEntry, SNAPSHOT, seedTrace } from './helpers.js';
 
 /**
  * 结构提示：这个库有没有骨架，地图跟没跟上。
@@ -36,6 +36,7 @@ async function makeLib(names) {
     await mkdir(join(dir, 'raw'), { recursive: true });
     await writeFile(join(dir, 'entry.md'), buildEntry({ id: id(n) }), 'utf8');
     await writeFile(join(dir, 'raw', 'source.txt'), SNAPSHOT, 'utf8');
+    await seedTrace(root, dir, id(n));
   }
   return { base, root };
 }
@@ -95,6 +96,7 @@ test('check：退役的条目不算孤儿——它本来就不该挂在地图上
     id: id('r'), deprecated: { at: '2026-11-22', reason: '这条已经拆成两条了，留着只看历史' },
   }), 'utf8');
   await writeFile(join(dir, 'raw', 'source.txt'), SNAPSHOT, 'utf8');
+  await seedTrace(root, dir, id('r'));
 
   await writeMap(base, [block('x', [])]);
   const r = run(['check', root]);
@@ -121,6 +123,7 @@ test('check：地图还挂着已退役的条目，要报——那一块看起来
     id: id('r'), deprecated: { at: '2026-11-22', reason: '结论被后来的实测推翻了，留着只看历史' },
   }), 'utf8');
   await writeFile(join(dir, 'raw', 'source.txt'), SNAPSHOT, 'utf8');
+  await seedTrace(root, dir, id('r'));
 
   await writeMap(base, [block('x', [id('r')])]);
   const r = run(['check', root]);

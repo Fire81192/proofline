@@ -24,7 +24,7 @@ import { parseFrontmatter, joinFrontmatter } from './core/frontmatter.js';
 import { sha256, sha256Bytes } from './core/snapshot.js';
 import { validateEntry } from './core/validate.js';
 import { deriveStatus } from './core/status.js';
-import { listEntryDirs, readEntry, commit, writeEntryText, resolveInside, contentHash } from './core/store.js';
+import { listEntryDirs, readEntry, commit, writeEntryText, resolveInside, contentHash, checkUntrackedChange } from './core/store.js';
 import { createEntry } from './create.js';
 import { fromAgentero, fromCodeDir } from './importers.js';
 import { decide, replay, toRecords, DEFAULT_POLICY } from './interrupt.js';
@@ -248,6 +248,22 @@ async function cmdCheck(root, fix) {
     let autofixes = result.autofixes;
 
     if (fix && status === 'fixed' && result.text) {
+      // --fix 不走 commit（它只做机械修复，不做整轮校验），
+      // 所以 commit 里那道 untracked_change 在它身上不存在。
+      // 而它会把整个文件写回——包括手改过的内容。
+      //
+      // 不补这一道的话：手改一条 + 恰好有个格式小毛病 → check --fix →
+      // 手改原样保留、盖一个 fix 章、trace 里和正常修复完全一样。
+      // 这是「主张 3」的第五条写入路径，上一轮堵了四条，漏的就是这条。
+      const untracked = await checkUntrackedChange(root, name, entry.text);
+      if (!untracked.ok) {
+        out(`未修\t${name}\t文件和上次入库记录不符（在工具之外被改过），不自动修复`);
+        out('  为什么：修复会把整份文件写回，手改内容会跟着变成「受控」。');
+        out('  接受现状：proofline trace --adopt    放弃改动：git checkout 这个条目目录');
+        counts.dirty += 1;
+        continue;
+      }
+
       await writeEntryText(entry.dir, result.text);
       // 写回也必须留痕。
       //
@@ -263,7 +279,7 @@ async function cmdCheck(root, fix) {
         // 这里吞了就是同一个仓库两种态度：文件改了、记录没写，下次 check 报未受控，
         // 而人只会看到「修好了」。把话说明白，让他自己决定要不要重来。
         out(`  留痕失败：${name}——entry.md 已改，但没有 fix 记录（${err.message}）`);
-        out('  下次 check 会把它判成未受控。要补：proofline trace --reseal');
+        out('  下次 check 会把它判成未受控。要接受现状：proofline trace --adopt');
       });
       // 写回后复验。「fixed」必须是观察到的，不是断言的——
       // 上一轮就出现过「报了修却没修」的 autofix，只有复验才发现。
@@ -498,7 +514,13 @@ async function cmdCheck(root, fix) {
     out('收件箱：这个库启用过，现在关着——新建会直接写正式区，只靠留痕兜底。');
   }
 
-  return counts.hard_fail || counts.dirty ? 1 : 0;
+  // 未受控也要失败。
+  //
+  // 以前只数 hard_fail 和 dirty，未受控在中间单独打印一行——于是
+  // 「一条被工具之外改过的条目」在 check 里退出码是 0，任何 CI / pre-commit
+  // 都不会拦。而同一个事实在 `set` 上是致命错误（untracked_change）。
+  // 同一个状态两种严重度，等于告诉人「绕过只在你想写的时候才算错」。
+  return counts.hard_fail || counts.dirty || uncontrol.length ? 1 : 0;
 }
 
 /**
@@ -590,6 +612,25 @@ function sourceStatusOf(registry, data) {
 
 
 /**
+ * 留痕写失败了，但文件已经改了。
+ *
+ * 不把这次写入判为失败——文件已落盘，报失败会让人以为可以重来。
+ * 但必须说出来：否则「每条写入都有留痕」在 trace 写不进去的时候悄悄不成立，
+ * 而人要到下一次 check 才发现它变未受控，还以为是工具自己弄坏的。
+ *
+ * `create` 那条路径早就这么做了（create.js 里 push 进 warnings）。
+ * 这里有五个 commit 调用点，以前一个都没看 `traceError`——字段返回了，
+ * 没人读，等于没有。
+ */
+function warnTraceError(id, res) {
+  if (!res || !res.ok || !res.traceError) return;
+  out();
+  out(`留痕没写进去：${id}（${res.traceError}）`);
+  out('  条目已改，但没有对应的记录——下次 check 会判它未受控。');
+  out('  要接受现状：proofline trace --adopt（它会给这一条记一笔 drift）');
+}
+
+/**
  * 写入失败时，把「为什么」和「怎么办」都说出来。
  *
  * 只报一个错误码等于让人猜——而这个工具的每一条拒绝都该有出路。
@@ -649,8 +690,10 @@ function assessEntry(entry, name, registry = {}, citableOf = null, controlledOf 
       derived.reasons = derived.reasons ?? [];
       derived.reasons.push({
         dimension: 'evidence',
-        code: 'untracked',
-        detail: '内容和上次入库记录不符——在工具之外被改过，不算依据',
+        code: controlledOf.traceError ? 'trace_unreadable' : 'untracked',
+        detail: controlledOf.traceError
+          ? `留痕读不了（${controlledOf.traceError}）——判断不了这条有没有被工具之外改过，按不能引用处理`
+          : '内容和上次入库记录不符——在工具之外被改过，不算依据',
       });
     }
 
@@ -695,8 +738,18 @@ async function buildCitableMap(root, registry) {
  * 读不到是「不知道」，不是「有问题」。不知道就不判，不冤枉人。
  */
 async function buildControlledMap(root) {
-  const trace = await readTrace(root).catch(() => null);
-  if (!trace || trace.error) return null;
+  const trace = await readTrace(root).catch((err) => ({ lines: [], error: err.message }));
+  // 留痕读不了 → 全部按「未受控」处理。
+  //
+  // 以前这里返回 null，而 null 让 assessEntry 跳过留痕否决（它只在
+  // typeof controlledOf === 'function' 时才判）。于是 trace 一坏，
+  // 库里的每一条都还能显示「可引用」——审计链断了，结论反而更宽松。
+  // 这是 fail-open，方向反了。
+  if (trace.error) {
+    const deny = () => false;
+    deny.traceError = trace.error;
+    return deny;
+  }
   const last = lastByEntry(trace.lines);
   return (id, text) => {
     const rec = last.get(id);
@@ -748,7 +801,11 @@ async function cmdStatus(root, id) {
   // 后面那些 supported / citable 都不作数：内容没经过入库闸门，说什么都可能是假的。
   const trace = await readTrace(root);
   const lastRec = lastByEntry(trace.lines).get(id) ?? null;
-  const ctrl = controlState(lastRec?.after ?? null, entry.hash);
+  // 留痕读坏了，不能拿「坏行之前的那几条记录」当依据——
+  // 这条条目的最后一笔可能就在读不出来的部分里。
+  const ctrl = trace.error
+    ? { controlled: false, kind: 'trace_unreadable', why: `留痕读不了：${trace.error}` }
+    : controlState(lastRec?.after ?? null, entry.hash);
 
   out();
   if (ctrl.controlled) {
@@ -761,7 +818,8 @@ async function cmdStatus(root, id) {
   out(`  来源维度      ${s.evidence_status} -> ${s.evidence_effective}${s.evidence_status === s.evidence_effective ? '' : '  (已降级)'}`);
   out(`  世界维度      ${s.world_status} -> ${s.world_effective}${s.world_status === s.world_effective ? '' : '  (已降级)'}`);
   if (shape.status === 'hard_fail') {
-    out(`  形状         不合规（check 会判 hard_fail，下面这些结论都不算数）`);
+    // 文案说「不算数」的那几句已经在上面打过了，所以是「上面」不是「下面」。
+    out(`  形状         不合规（check 会判 hard_fail，上面那些维度结论都不算数）`);
     for (const h of shape.hardFails.slice(0, 3)) out(`                ${h}`);
   }
   const usable = s.citable && shape.status !== 'hard_fail';
@@ -831,12 +889,16 @@ async function cmdStatus(root, id) {
     }
   }
   if (s.reasons.length) {
-    // 标题按内容定，不按习惯定。
-    // 第一版无条件写「为什么降级」，于是退役条目会出现
-    // 「来源维度 supported -> supported」紧跟「为什么降级」的自相矛盾。
-    const onlyRetired = s.reasons.every((r) => r.dimension === 'retired');
+    // 标题按事实定：只有真的降级了才叫「为什么降级」。
+    //
+    // 第一版无条件写「为什么降级」，退役条目会出现「supported -> supported」紧跟
+    // 「为什么降级」；后来只给 retired 维度开了例外，`quote_normalized` 这类
+    // 「记录了但不降级」的原因还留在原地——同一句错话换个入口又出现一次。
+    // 判据不该是「原因属于哪个维度」，是「这一维到底有没有变」。
+    const downgraded = s.evidence_status !== s.evidence_effective
+      || s.world_status !== s.world_effective;
     out();
-    out(onlyRetired ? '  退役记录有问题：' : '  为什么降级：');
+    out(downgraded ? '  为什么降级：' : '  要说明的地方（不影响可用性）：');
     for (const r of s.reasons) out(`    [${r.dimension}] ${r.code}  ${r.detail}`);
   }
   if (s.blocking_gaps.evidence.length || s.blocking_gaps.world.length) {
@@ -865,9 +927,15 @@ async function cmdIndex(root) {
       continue;
     }
     // 形状废了就不许进索引说「可引用」——check 会拒它，index 不能替它背书。
+    //
+    // 未受控单独一个词：它以前落到「仅线索」，而「线索」是 layer 的取值——
+    // 一条 layer=标准 的条目被标成「仅线索」，读的人会以为它是线索级的。
+    // 两个不同的东西共用一个词，等于让人误判它为什么不能引用。
     const flag = shape.status === 'hard_fail'
       ? '形状废'
-      : (s.decisive ? '可判定' : (s.citable ? '可引用' : '仅线索'));
+      : (s.controlled === false
+        ? '未受控'
+        : (s.decisive ? '可判定' : (s.citable ? '可引用' : '仅线索')));
     rows.push(`- ${s.claim}  \n  \`${name}\` · ${s.kind} · ${s.layer} · ${s.evidence_effective}/${s.world_effective} · ${flag}`);
   }
   const body = `# 索引\n\n一行一条，只放主张和状态，不放正文。\n找的时候先扫这里，判断相关再去读那条 entry.md。\n\n共 ${rows.length} 条。\n\n${rows.join('\n')}\n`;
@@ -1025,6 +1093,7 @@ async function cmdCorroborate(root, id, opts) {
 
   const text = joinFrontmatter({ ...data, corroborations }, body, KEY_ORDER);
   const res = await commit({ root, id, text, expect: entry.hash, op: 'corroborate' });
+  warnTraceError(id, res);
 
   if (!res.ok) {
     // 提交失败就把刚写的快照删掉，别留孤儿文件：它不被任何佐证引用，
@@ -1346,6 +1415,7 @@ async function cmdRun(root, id, opts) {
   }
   const text = joinFrontmatter(next, body, KEY_ORDER);
   const res = await commit({ root, id, text, expect: entry.hash, op: 'run' });
+  warnTraceError(id, res);
 
   if (!res.ok) {
     // 提交失败就把刚写的输出删掉，别留孤儿文件：它不被任何 run 引用，
@@ -1435,6 +1505,7 @@ async function cmdSet(root, id, field, rawValue, patch = null) {
 
   const text = joinFrontmatter(next, body, KEY_ORDER);
   const res = await commit({ root, id, text, expect: entry.hash, op: 'set' });
+  warnTraceError(id, res);
 
   if (!res.ok) {
     // set 不写任何文件，所以这里没有需要清理的东西。
@@ -2632,6 +2703,8 @@ async function cmdRetire(root, id, opts) {
     }
     delete data.deprecated;
     const res = await commit({ root, id, text: joinFrontmatter(data, body, KEY_ORDER), expect: entry.hash, op: 'retire' });
+  warnTraceError(id, res);
+    warnTraceError(id, res);
     if (!res.ok) {
       out(`撤销失败：${res.code}`);
       return 1;
@@ -3025,11 +3098,15 @@ async function buildMapHtml(root, served = false) {
   // 于是「0 个 problem 再交」这句承诺对 AI 来说是空的。
   const report = analyze({ knowledge, progress, knownIds: new Set(all.map((e) => e.id)) });
   const registry = await readSources(root);
+  // 地图也要看留痕：它统计「这块挂着几条、其中几条真能引用」，
+  // 未受控的条目挂上去会让这一块看起来有支撑。index / review / stats 都接了，
+  // 这里漏着就是同一套规则在两处实现、一处严一处松。
+  const controlledOf = await buildControlledMap(root);
 
   const entryStatus = new Map();
   for (const e of all) {
     if (e.broken) continue;
-    const { shape, derived, parseError, blockingList } = assessEntry(e.entry, e.id, registry);
+    const { shape, derived, parseError, blockingList } = assessEntry(e.entry, e.id, registry, null, controlledOf);
     if (parseError || !derived) continue;
     entryStatus.set(e.id, {
       claim: derived.claim,

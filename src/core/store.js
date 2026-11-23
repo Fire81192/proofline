@@ -278,6 +278,33 @@ async function acquireLock(root, timeoutMs = 8000) {
 }
 
 /**
+ * 这条内容是不是和留痕里记的上次入库状态一致。
+ *
+ * 单独抽出来是因为它不只服务 commit：`check --fix` 不走 commit
+ * （它只做机械修复，不走整轮校验），于是那条路上一个「手改 + 恰好有个
+ * 格式小毛病」的条目会被 fix 原样写回并盖上一个 fix 章——手改内容变成了
+ * 受控基线，而 trace 里看不出它和一次正常修复有什么区别。
+ *
+ * 所有写入路径都要问同一个问题：**你这次写，是接着上次记录来的吗**。
+ *
+ * @returns {Promise<{ok:boolean, code?:string, hint?:string}>}
+ */
+export async function checkUntrackedChange(root, id, currentText) {
+  const { lines } = await readTrace(root).catch(() => ({ lines: [] }));
+  const lastRec = lines.filter((l) => l && l.id === id).pop();
+  // 没有记录的不判：老库、adopt 之前的历史条目都属这一类。
+  // 「不知道」不等于「有问题」。
+  if (!lastRec || typeof lastRec.after !== 'string') return { ok: true };
+  if (contentHash(currentText) === lastRec.after) return { ok: true };
+  return {
+    ok: false,
+    code: 'untracked_change',
+    hint: '文件内容和上次入库记录不符——在工具之外被改过。'
+      + '接受现状：proofline trace --adopt；放弃改动：git checkout 这个文件',
+  };
+}
+
+/**
  * 提交一次写入。
  *
  * @param {object} args
@@ -326,23 +353,9 @@ export async function commit({ root, id, text, expect = null, allowCreate = fals
   // 当 expect——自己跟自己比，永远相等，那一关形同虚设。
   //
   // 真正该比的是 trace 里记的 `after`：它是上次入库那一刻的内容。
-  // 两者不一致，说明文件在这之间被工具之外的东西改过。
-  //
-  // 不拦的话，手改 claim → 跑一次 set topic → 手改就被「接受」成受控版本，
-  // 留痕等于白记。实测确认过这条路是通的，所以必须堵在这里：
-  // 一处改动，set / run / corroborate / retire / fix 五条写入路径一起管住。
   if (current !== null) {
-    const { lines: traceLines } = await readTrace(root).catch(() => ({ lines: [] }));
-    const lastRec = traceLines.filter((l) => l && l.id === id).pop();
-    // 没有记录的不判：老库、adopt 之前的历史条目都属这一类。
-    // 「不知道」不等于「有问题」。
-    if (lastRec && typeof lastRec.after === 'string' && contentHash(current) !== lastRec.after) {
-      return {
-        ok: false,
-        code: 'untracked_change',
-        hint: '文件内容和上次入库记录不符——在工具之外被改过。接受现状：proofline trace --adopt；放弃改动：git checkout 这个文件',
-      };
-    }
+    const untracked = await checkUntrackedChange(root, id, current);
+    if (!untracked.ok) return untracked;
   }
 
   let snapshotText = null;

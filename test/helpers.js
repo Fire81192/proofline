@@ -68,3 +68,21 @@ export function buildCorroborated(overrides = {}, opts = {}) {
 export function readerOf(map) {
   return (rel) => (rel in map ? map[rel] : null);
 }
+
+/**
+ * 给手写出来的条目补一条入库记录。
+ *
+ * 2026-11-23 之后，「没有入库记录」在 check 里会让退出码变成 1
+ * （以前只打印一行「未受控」，不影响退出码——CI 里永远绿）。
+ *
+ * 所以测试里凡是想构造「正常库」的 fixture，都要补这一笔：
+ * 不补的话那个条目在语义上就是「工具之外写进来的」，判未受控是对的。
+ */
+export async function seedTrace(root, entryDir, entryId) {
+  const { readFile } = await import('node:fs/promises');
+  const { join } = await import('node:path');
+  const { appendTrace } = await import('../src/core/trace.js');
+  const { contentHash } = await import('../src/core/store.js');
+  const text = await readFile(join(entryDir, 'entry.md'), 'utf8');
+  await appendTrace(root, { op: 'create', id: entryId, after: contentHash(text) });
+}
