@@ -174,3 +174,43 @@ test('留痕：并发追加不断链（.trace.lock）', async () => {
   for (let i = 1; i < lines.length; i += 1) if (lines[i].prev === lines[i - 1].prev) dup += 1;
   assert.equal(dup, 0, '不能有两条指向同一个前驱');
 });
+
+test('trace --adopt：被改过的条目记 drift，不是 adopt', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'pl-drift-'));
+  const { createEntry } = await import('../src/create.js');
+  const spec = {
+    claim: '标准大气压（101.325 kPa）下，纯水的沸点是 100 ℃',
+    kind: '原理', layer: '标准', basis: '条目', topic: 'demo.boiling',
+    source_kind: '其他', source_extraction: '原文', source_uri: 'demo://沸点小记',
+    snapshot_text: '标准大气压（101.325 kPa）下，纯水的沸点是 100 ℃。',
+    quotes: ['标准大气压（101.325 kPa）下，纯水的沸点是 100 ℃。'],
+    evidence_status: 'supported', world_status: 'unresolved', added_at: '2026-01-01',
+  };
+  for (const id of ['2026-01-01-a', '2026-01-01-b']) {
+    const r = await createEntry({ root, id, spec });
+    assert.equal(r.ok, true, `seed 失败：${r.code}`);
+  }
+
+  // 手改 b
+  const fb = join(root, '2026-01-01-b', 'entry.md');
+  await writeFile(fb, (await readFile(fb, 'utf8')).replace('沸点是 100', '沸点是 120'), 'utf8');
+
+  const CLI = join(dirname(fileURLToPath(import.meta.url)), '..', 'src', 'cli.js');
+  const cli = (args) => execFileSync(process.execPath, [CLI, ...args], { encoding: 'utf8', stdio: 'pipe' }).toString();
+
+  // 不带 confirm：说清「1 条不符，会记 drift」
+  const dry = cli(['trace', root, '--adopt']);
+  assert.match(dry, /内容和上次记录不符/);
+  assert.match(dry, /记成 drift/);
+
+  cli(['trace', root, '--adopt', '--confirm']);
+
+  const { lines } = await readTrace(root);
+  const ops = lines.map((l) => l.op);
+  assert.equal(ops.filter((o) => o === 'drift').length, 1, '被改过的那条记 drift');
+  assert.equal(ops.filter((o) => o === 'adopt').length, 0, '没有「首次纳入」的条目');
+
+  // 再跑一次：已经一致了，不该重复记
+  const again = cli(['trace', root, '--adopt']);
+  assert.match(again, /每条都有记录，而且内容和记录一致/);
+});

@@ -2318,17 +2318,41 @@ async function cmdTrace(root, opts) {
     return 0;
   }
 
+  // 有记录、但内容和记录不符的：这是「被改过」。
+  //
+  // 以前 `--adopt` 只处理「没有记录」的（pending），已经入过痕的条目被手改之后
+  // 只能靠 `--reseal` 重建链头——而那一步在记录里看不出「改过几次」。
+  //
+  // 现在分开记：没记录的记 `adopt`（首次纳入），改过的记 `drift`（按现状重新纳入）。
+  // 这样 `trace` 能回答「这条被改过几次」，而不再是一个模糊的「现在它是好的」。
+  const drifted = [];
+  for (const e of all) {
+    const rec = last.get(e.id);
+    if (!rec || typeof rec.after !== 'string') continue;
+    const now = contentHash(e.text);
+    if (now !== rec.after) drifted.push({ e, expected: rec.after, actual: now });
+  }
+
   if (opts.adopt) {
-    if (pending.length === 0) {
-      out('每条都已经有记录了，不需要建立基线。');
+    if (pending.length === 0 && drifted.length === 0) {
+      out('每条都有记录，而且内容和记录一致。没有要纳入的。');
       return 0;
     }
     if (!opts.confirm) {
-      out(`会给 ${pending.length} 条建立基线（不代表它们此前合规，只代表从今天起开始记）。`);
-      out('  记录里会写明「首次纳入留痕，此前历史不可考」。');
+      if (pending.length > 0) {
+        out(`会给 ${pending.length} 条建立基线（不代表它们此前合规，只代表从今天起开始记）。`);
+        out('  记录里会写明「首次纳入留痕，此前历史不可考」。');
+      }
+      if (drifted.length > 0) {
+        out(`另有 ${drifted.length} 条的内容和上次记录不符（被工具之外改过）：`);
+        for (const d of drifted) out(`  ${d.e.id}  期望 ${d.expected.slice(0, 8)}…  实际 ${d.actual.slice(0, 8)}…`);
+        out('  它们会被记成 drift（按现状重新纳入），不是 adopt——「首次纳入」和「改过之后接受」是两回事。');
+      }
       out('加 --confirm 执行。');
       return 0;
     }
+
+    let adopted = 0;
     for (const e of pending) {
       await appendTrace(root, {
         op: 'adopt',
@@ -2336,8 +2360,25 @@ async function cmdTrace(root, opts) {
         after: contentHash(e.text),
         note: '首次纳入留痕，此前历史不可考',
       });
+      adopted += 1;
     }
-    out(`已为 ${pending.length} 条建立基线。此前的历史不可考——这一点写进了记录里。`);
+
+    let driftedN = 0;
+    for (const d of drifted) {
+      await appendTrace(root, {
+        op: 'drift',
+        id: d.e.id,
+        after: d.actual,
+        note: `内容与上次记录不符（期望 ${d.expected.slice(0, 8)}…，实际 ${d.actual.slice(0, 8)}…），按现状重新纳入`,
+      });
+      driftedN += 1;
+    }
+
+    if (adopted > 0) out(`已为 ${adopted} 条建立基线。此前的历史不可考——这一点写进了记录里。`);
+    if (driftedN > 0) {
+      out(`已把 ${driftedN} 条按现状重新纳入（记成 drift）。`);
+      out('  这不是「修补」，是「承认它被改过，从这一刻起以新内容为准」。改过几次，trace 里数得出来。');
+    }
     return 0;
   }
 
@@ -2362,6 +2403,13 @@ async function cmdTrace(root, opts) {
 
   out(`留痕 ${trace.lines.length} 条 · 链${chain.ok ? '完整' : `在第 ${chain.brokenAt} 行断了`}` + (headChk.kind === 'absent' ? ' · 没有链头' : headChk.ok ? ' · 链头一致' : ' · 链头对不上'));
   out(`受控 ${rows.length - bad.length}/${rows.length}${bad.length ? ` · 未受控 ${bad.length}` : ''}`);
+  // drift 是「被工具之外改过、按现状重新纳入」的记录。
+  // 它不算未受控（内容已重新入账），但也不能假装没发生过——
+  // 「改过几次」这个数字，正是留痕能回答而 git 答不了的东西。
+  const driftCount = trace.lines.filter((l) => l && l.op === 'drift').length;
+  if (driftCount > 0) {
+    out(`其中 ${driftCount} 条被工具之外改过，已按现状重新纳入（drift）。改过几次，这里数得出来。`);
+  }
   if (trace.error) out(`⚠ ${trace.error}`);
   if (bad.length > 0) {
     out();
