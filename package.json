@@ -1,6 +1,6 @@
 {
   "name": "proofline",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "断言审计：每条主张都必须能在原文里逐字定位到，判定拆成「来源说了什么」与「是不是真的」两个独立维度。",
   "type": "module",
   "license": "MIT",
