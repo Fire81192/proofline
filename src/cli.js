@@ -258,7 +258,13 @@ async function cmdCheck(root, fix) {
         op: 'fix',
         id: name,
         after: contentHash(result.text),
-      }).catch(() => {});
+      }).catch((err) => {
+        // 不能 .catch(() => {}) 吞掉。create 那条路上写着「留痕失败不能静默」，
+        // 这里吞了就是同一个仓库两种态度：文件改了、记录没写，下次 check 报未受控，
+        // 而人只会看到「修好了」。把话说明白，让他自己决定要不要重来。
+        out(`  留痕失败：${name}——entry.md 已改，但没有 fix 记录（${err.message}）`);
+        out('  下次 check 会把它判成未受控。要补：proofline trace --reseal');
+      });
       // 写回后复验。「fixed」必须是观察到的，不是断言的——
       // 上一轮就出现过「报了修却没修」的 autofix，只有复验才发现。
       const reread = await readEntry(root, name);

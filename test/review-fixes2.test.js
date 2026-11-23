@@ -99,3 +99,76 @@ test('引文：逐字命中记 exact，折叠后才命中记 normalized', () => 
   assert.ok(d2.reasons.some((r) => r.code === 'quote_normalized'), '双空格应当被说出来');
   assert.equal(d2.citable, true, '宽松命中仍然是命中，不降级');
 });
+
+// ---- 第三轮外部审核（DeepSeek）指出的两条「读时防线比写时松」 ----
+
+test('run 的 expect 是数字：不给依据（以前零断言也 runBasis += 1）', () => {
+  const SCRIPT = 'print("mae")';
+  const OUT = 'mae: 4.02';
+  const mk = (expect) => deriveStatus({
+    dirName: '2026-11-22-a',
+    text: buildEntry({
+      id: '2026-11-22-a', basis: '实测', world_status: 'supported',
+      runs: [{
+        script: 'raw/run.py', script_sha256: sha256(SCRIPT),
+        cmd: 'python run.py',
+        output: 'raw/out.txt', output_sha256: sha256(OUT),
+        expect, at: '2026-11-22', env: 'Python 3.12',
+      }],
+    }),
+    snapshotText: SNAPSHOT,
+    readSnapshot: (rel) => (rel === 'raw/out.txt' ? OUT : null),
+    readRunScript: (rel) => (rel === 'raw/run.py' ? SCRIPT : null),
+  });
+
+  // 正确写法先立个基线
+  const good = mk({ mae: '4.02' });
+  assert.equal(good.world_basis_detail.runs, 1);
+
+  // 忘加引号：YAML 读成数字。写入会拒，读时也必须拒——
+  // 否则这条实测一条断言都没核，却拿到了世界维度的依据。
+  const bad = mk({ mae: 4.02 });
+  assert.equal(bad.world_basis_detail.runs, 0, '数字期望值不能被静默跳过');
+  assert.equal(bad.world_effective, 'unresolved');
+  assert.ok(bad.reasons.some((r) => r.code === 'run_expect_uncheckable'));
+
+  // 空字符串同理：核不了
+  assert.equal(mk({ mae: '' }).world_basis_detail.runs, 0);
+});
+
+test('佐证：同内容换文件名，仍然只算一份', () => {
+  const c = {
+    snapshot: 'raw/verify-1.txt',
+    sha256: sha256(CORROB_TEXT),
+    quote: CORROB_TEXT.slice(0, 12),
+    uri: 'https://example.com',
+  };
+  const OTHER_TEXT = '另一份独立材料，讲的是完全不同的事。';
+  const mk = (list) => deriveStatus({
+    dirName: '2026-11-22-a',
+    text: buildEntry({ id: '2026-11-22-a', corroborations: list, world_status: 'supported' }),
+    snapshotText: SNAPSHOT,
+    readSnapshot: (rel) => {
+      if (/^raw\/(verify-1|copy)\.txt$/.test(rel)) return CORROB_TEXT;
+      if (rel === 'raw/other.txt') return OTHER_TEXT;
+      return null;
+    },
+  });
+
+  assert.equal(mk([c]).world_basis_detail.corroborations, 1);
+
+  // 同一篇文章存两个文件名：内容是同一份，来源不是两份。
+  // 以前去重键里带了 snapshot 路径，改个名字就能骗成两份独立来源。
+  const sameContentOtherName = mk([c, { ...c, snapshot: 'raw/copy.txt' }]);
+  assert.equal(sameContentOtherName.world_basis_detail.corroborations, 1);
+  assert.ok(sameContentOtherName.reasons.some((r) => r.code === 'corroboration_duplicate'));
+
+  // 内容真的不同，仍然是两份
+  const other = {
+    snapshot: 'raw/other.txt',
+    sha256: sha256(OTHER_TEXT),
+    quote: OTHER_TEXT.slice(0, 8),
+    uri: 'https://another.example.com',
+  };
+  assert.equal(mk([c, other]).world_basis_detail.corroborations, 2);
+});

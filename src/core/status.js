@@ -143,9 +143,11 @@ export function deriveStatus({ dirName, text, snapshotText, boxes = null, readSn
         continue;
       }
       // 同一条佐证写两遍不算两份独立来源。
-      // 判据是「同一个快照 + 同一个哈希」——那是同一份材料，只是重复录入。
-      // 不判「来源独不独立」（那是人的事），但重复录入不是独立性问题，是同一行抄了两遍。
-      const dupKey = `${c.snapshot}\u0000${c.sha256}`;
+      //
+      // 判据只看内容哈希，不看路径：同一篇文章存成 raw/verify-1.txt 和 raw/copy.txt，
+      // 内容一样，仍然是同一份材料。以前键里带了 snapshot 路径，改个文件名就能骗成两份。
+      // 路径是位置，哈希才是身份。
+      const dupKey = c.sha256;
       if (seenCorrob.has(dupKey)) {
         reasons.push({ dimension: 'world', code: 'corroboration_duplicate', detail: `佐证 #${i + 1} 和第 ${seenCorrob.get(dupKey) + 1} 条是同一份材料，只算一份` });
         continue;
@@ -231,7 +233,24 @@ export function deriveStatus({ dirName, text, snapshotText, boxes = null, readSn
       reasons.push({ dimension: 'world', code: 'run_no_expect', detail: `${at} 没有期望值，这次实测核不了任何东西` });
       continue;
     }
-    const missing = Object.entries(expect).filter(([, v]) => typeof v === 'string' && v !== '' && !containsValue(out, v));
+    // 两种「核不了」要分开报，因为改法不同：
+    //   不是字符串 → 写法问题（YAML 里 4.02 没加引号，读出来是数字）
+    //   是字符串但输出里没有 → 证据问题（脚本跑出来的值变了）
+    //
+    // 以前只挑出第二种，非字符串值被 `typeof v === 'string'` 静默放过，
+    // 于是 `expect: {"mae": 4.02}` 一条断言都不核，却照样 runBasis += 1。
+    // 写入路径（validate）会拒数字，但读时防线自己漏了——写严读松，方向反了。
+    const entries = Object.entries(expect);
+    const uncheckable = entries.filter(([, v]) => typeof v !== 'string' || v === '');
+    if (uncheckable.length > 0) {
+      reasons.push({
+        dimension: 'world',
+        code: 'run_expect_uncheckable',
+        detail: `${at} 的期望值没法核（不是非空字符串）：${uncheckable.map(([k]) => k).join(', ')}——数字请写成字符串`,
+      });
+      continue;
+    }
+    const missing = entries.filter(([, v]) => !containsValue(out, v));
     if (missing.length > 0) {
       reasons.push({
         dimension: 'world',

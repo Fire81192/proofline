@@ -136,6 +136,15 @@ export function guardAction({
   const inside = rel !== '' && !rel.startsWith('..') && !isAbsolute(rel);
 
   // 1. 条目正文：绕过 commit 就等于绕过所有校验
+  //
+  // 只管 entry.md，**不管 raw/source.txt**，这是有意的，不是漏了。
+  //
+  // 换一份更好的原文是正常操作：你要重算哈希、重挑引文，那本来就走 set / corroborate。
+  // 直接写 source.txt 会被 source_sha256 在下次 check 时抓出来（snapshot_changed），
+  // 那是「事后发现」，不是「事前拦」。
+  //
+  // 这条边界的代价要说清：guard 不保证「库里的字节没变」，只保证
+  // 「entry.md 的改动走工具」。改快照靠哈希，改正文靠闸门——两层分工，别混。
   if (ENTRY_FILE_RE.test(rel) && kind === 'write') {
     push(
       'protected_entry',
