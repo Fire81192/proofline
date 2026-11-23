@@ -1,0 +1,90 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 780" width="1200" height="780" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif">
+  <rect width="1200" height="780" fill="#0d1117"/>
+
+  <text x="600" y="46" text-anchor="middle" font-size="24" font-weight="600" fill="#e6edf3">两个维度，互不抵扣</text>
+  <text x="600" y="74" text-anchor="middle" font-size="14" fill="#8b949e">「这个来源说过」和「这件事是真的」是两件事。前者不能替后者背书。</text>
+
+  <!-- 左：来源维度 -->
+  <text x="96" y="120" font-size="13" font-weight="600" fill="#e6edf3">来源维度</text>
+  <text x="96" y="140" font-size="11" fill="#6e7681">这份材料说了什么 · 由代码判</text>
+
+  <g>
+    <rect x="70" y="156" width="440" height="60" rx="8" fill="#dafbe1" stroke="#4ac26b"/>
+    <text x="88" y="180" font-size="13" font-weight="600" fill="#3fb950" font-family="ui-monospace, Consolas, monospace">supported</text>
+    <text x="88" y="200" font-size="11" fill="#3fb950">引文在快照里定位到，哈希对得上</text>
+
+    <rect x="70" y="222" width="440" height="60" rx="8" fill="#0d1117" stroke="#30363d"/>
+    <text x="88" y="246" font-size="13" font-weight="600" fill="#8b949e" font-family="ui-monospace, Consolas, monospace">unresolved</text>
+    <text x="88" y="266" font-size="11" fill="#6e7681">引文定位不到 / 快照被改 / 条目未受控</text>
+
+    <rect x="70" y="288" width="440" height="60" rx="8" fill="#3d2e00" stroke="#d4a72c"/>
+    <text x="88" y="312" font-size="13" font-weight="600" fill="#d29922" font-family="ui-monospace, Consolas, monospace">not_checked</text>
+    <text x="88" y="332" font-size="11" fill="#d29922">判断档：本来就没有原文，不查</text>
+
+    <rect x="70" y="354" width="440" height="60" rx="8" fill="#3d1518" stroke="#ff8182"/>
+    <text x="88" y="378" font-size="13" font-weight="600" fill="#f85149" font-family="ui-monospace, Consolas, monospace">contradicted</text>
+    <text x="88" y="398" font-size="11" fill="#f85149">有另一份材料明确否定了它</text>
+  </g>
+
+  <!-- 中间：不等于 -->
+  <text x="600" y="256" text-anchor="middle" font-size="46" fill="#30363d">≠</text>
+  <text x="600" y="286" text-anchor="middle" font-size="11" fill="#6e7681">不互相</text>
+  <text x="600" y="302" text-anchor="middle" font-size="11" fill="#6e7681">抵扣</text>
+
+  <!-- 右：世界维度 -->
+  <text x="690" y="120" font-size="13" font-weight="600" fill="#e6edf3">世界维度</text>
+  <text x="690" y="140" font-size="11" fill="#6e7681">这件事是不是真的 · 只认证据</text>
+
+  <g>
+    <rect x="690" y="156" width="440" height="60" rx="8" fill="#dafbe1" stroke="#4ac26b"/>
+    <text x="708" y="180" font-size="13" font-weight="600" fill="#3fb950" font-family="ui-monospace, Consolas, monospace">supported</text>
+    <text x="708" y="200" font-size="11" fill="#3fb950">有独立佐证，或自己跑出来过</text>
+
+    <rect x="690" y="222" width="440" height="60" rx="8" fill="#0d1117" stroke="#30363d"/>
+    <text x="708" y="246" font-size="13" font-weight="600" fill="#8b949e" font-family="ui-monospace, Consolas, monospace">unresolved</text>
+    <text x="708" y="266" font-size="11" fill="#6e7681">没有佐证，也没跑过 —— 这是默认值</text>
+
+    <rect x="690" y="288" width="440" height="60" rx="8" fill="#3d1518" stroke="#ff8182"/>
+    <text x="708" y="312" font-size="13" font-weight="600" fill="#f85149" font-family="ui-monospace, Consolas, monospace">contradicted</text>
+    <text x="708" y="332" font-size="11" fill="#f85149">有证据说明它是错的</text>
+
+    <text x="708" y="378" font-size="11" fill="#6e7681">世界三档：没查过不算结论。</text>
+    <text x="708" y="398" font-size="11" fill="#6e7681">来源四档：多一个「判断档不用原文」。</text>
+  </g>
+
+  <!-- 世界维度的两条路 -->
+  <line x1="70" y1="444" x2="1130" y2="444" stroke="#d8dee4"/>
+  <text x="70" y="478" font-size="12" fill="#6e7681" letter-spacing="1.2">世界维度只有两条路能走到 supported</text>
+
+  <g>
+    <rect x="70" y="494" width="520" height="96" rx="10" fill="#161b22" stroke="#30363d"/>
+    <text x="92" y="522" font-size="13" font-weight="600" fill="#e6edf3">佐证 corroborations</text>
+    <text x="92" y="546" font-size="12" fill="#8b949e">第二份独立材料也这么说：各自的快照 + 哈希 + 引文，三条都核得过才算一份</text>
+    <text x="92" y="570" font-size="11" fill="#6e7681">同一份材料写两遍 → 只算一份。重复录入不是「独立来源」。</text>
+
+    <rect x="610" y="494" width="520" height="96" rx="10" fill="#161b22" stroke="#30363d"/>
+    <text x="632" y="522" font-size="13" font-weight="600" fill="#e6edf3">实测 runs</text>
+    <text x="632" y="546" font-size="12" fill="#8b949e">自己跑过：脚本没被改、输出没被改、期望值仍在那次输出里</text>
+    <text x="632" y="570" font-size="11" fill="#6e7681">脚本不在了 → 这条实测失效，世界维度退回 unresolved。</text>
+  </g>
+
+  <!-- 三个答案 -->
+  <line x1="70" y1="616" x2="1130" y2="616" stroke="#d8dee4"/>
+  <text x="70" y="650" font-size="12" fill="#6e7681" letter-spacing="1.2">组合起来给三个答案，不是一个结论</text>
+
+  <g>
+    <text x="96" y="692" font-size="13" fill="#8b949e">能引用</text>
+    <text x="180" y="692" font-size="13" font-weight="600" fill="#3fb950">是</text>
+    <text x="216" y="692" font-size="11" fill="#6e7681">来源确实这么说过</text>
+
+    <text x="440" y="692" font-size="13" fill="#8b949e">能下判断</text>
+    <text x="542" y="692" font-size="13" font-weight="600" fill="#db6d28">否</text>
+    <text x="578" y="692" font-size="11" fill="#6e7681">世界层面还没有结论</text>
+
+    <text x="830" y="692" font-size="13" fill="#8b949e">能改吗</text>
+    <text x="916" y="692" font-size="13" font-weight="600" fill="#e6edf3">能</text>
+    <text x="952" y="692" font-size="11" fill="#6e7681">但改过就变未受控</text>
+
+    <text x="96" y="726" font-size="11" fill="#6e7681">这两行同时出现，才是这个工具的主张：来源对了，不代表可以下结论。</text>
+  </g>
+</svg>

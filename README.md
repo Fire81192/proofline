@@ -1,6 +1,9 @@
 <div align="center">
 
-<img src="docs/assets/cover.png" width="820" alt="proofline：原文快照 → 引文 → 主张，逐字定位 mode: exact，下面是 check 与 status 的真实输出">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/cover-dark.png">
+  <img src="docs/assets/cover.png" width="820" alt="proofline：原文快照 → 引文 → 主张，逐字定位 mode: exact，下面是 check 与 status 的真实输出">
+</picture>
 
 <h1>proofline</h1>
 
@@ -10,7 +13,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License"></a>
   <a href="#"><img src="https://img.shields.io/badge/node-%3E%3D20-brightgreen" alt="Node 20+"></a>
   <a href="#"><img src="https://img.shields.io/badge/dependencies-0-brightgreen" alt="零依赖"></a>
-  <a href="#"><img src="https://img.shields.io/badge/tests-531%20passing-brightgreen" alt="531 个测试"></a>
+  <a href="#"><img src="https://img.shields.io/badge/tests-537%20passing-brightgreen" alt="537 个测试"></a>
 </p>
 
 <p>

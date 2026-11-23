@@ -8,7 +8,10 @@
 
 ## 〇、四步
 
-![一条主张的一生：new → check → status → view/map，每步产出什么，三个失败出口](assets/lifecycle.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/lifecycle-dark.png">
+  <img src="assets/lifecycle.png" alt="一条主张的一生：new → check → status → view/map，每步产出什么，三个失败出口">
+</picture>
 
 只有第一步会**改条目库**。后三步都不改条目——`status` 和 `view` 每次都从原文重算，不缓存结论。
 
@@ -20,7 +23,10 @@
 
 ## 一、六道检查
 
-![六道检查：形状、引文、哈希、数值、留痕、两个维度，每道都标了不过会怎样](assets/checks.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/checks-dark.png">
+  <img src="assets/checks.png" alt="六道检查：形状、引文、哈希、数值、留痕、两个维度，每道都标了不过会怎样">
+</picture>
 
 六道全过才写进库。**每一道都写着「不过会怎样」**，因为拒绝的时候必须说清理由——
 `hard_fail` 只说一句「不合规」，等于让人猜。
@@ -38,8 +44,10 @@
 
 ## 二、两个维度
 
-![两个维度：来源常见四档、世界常见三档，中间一个不等于号，下方是两条路和三个答案
-（图只画常见取值——全集是五态，`conflicting` 和世界维度的 `not_checked` 见下文说明）](assets/dimensions.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/dimensions-dark.png">
+  <img src="assets/dimensions.png" alt="两个维度：来源常见四档、世界常见三档，中间一个不等于号，下方是两条路和三个答案">
+</picture>
 
 ### 为什么两个维度用同一套五态取值，判法却不一样
 
