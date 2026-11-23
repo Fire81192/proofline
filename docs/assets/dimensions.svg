@@ -11,7 +11,7 @@
   <g>
     <rect x="70" y="156" width="440" height="60" rx="8" fill="#dafbe1" stroke="#4ac26b"/>
     <text x="88" y="180" font-size="13" font-weight="600" fill="#1a7f37" font-family="ui-monospace, Consolas, monospace">supported</text>
-    <text x="88" y="200" font-size="11" fill="#1a7f37">引文逐字命中，快照哈希对得上</text>
+    <text x="88" y="200" font-size="11" fill="#1a7f37">引文在快照里定位到，哈希对得上</text>
 
     <rect x="70" y="222" width="440" height="60" rx="8" fill="#ffffff" stroke="#d0d7de"/>
     <text x="88" y="246" font-size="13" font-weight="600" fill="#59636e" font-family="ui-monospace, Consolas, monospace">unresolved</text>
@@ -48,8 +48,8 @@
     <text x="708" y="312" font-size="13" font-weight="600" fill="#a40e26" font-family="ui-monospace, Consolas, monospace">contradicted</text>
     <text x="708" y="332" font-size="11" fill="#a40e26">有证据说明它是错的</text>
 
-    <text x="708" y="378" font-size="11" fill="#8c959f">只有三档。世界没有「没查过所以算过」这一档。</text>
-    <text x="708" y="398" font-size="11" fill="#8c959f">来源有四档，是因为它多一个「判断档不用原文」。</text>
+    <text x="708" y="378" font-size="11" fill="#8c959f">世界三档：没查过不算结论。</text>
+    <text x="708" y="398" font-size="11" fill="#8c959f">来源四档：多一个「判断档不用原文」。</text>
   </g>
 
   <!-- 世界维度的两条路 -->

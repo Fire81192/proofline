@@ -2,7 +2,9 @@
 
 31 个，按用途分七组。**大多数时候你只需要前两组。**
 
-退出码统一：`0` 通过 / `1` 有 hard_fail 或 dirty / `2` 用法错误。
+退出码：`0` 通过 / `1` 有 hard_fail、dirty **或未受控** / `2` 用法错误 / `3` 内部错误。
+
+`guard` 是唯一例外：它的 `0` 表示「能直接继续」，`1` 表示「不能」（ask 和 deny 都算不能，区别在 JSON 的 `decision` 字段）。
 
 ---
 
@@ -64,13 +66,13 @@
 | `deprecate <来源> --reason "..." [--confirm]` | 弃用一份**来源**，它下面所有主张都不再可引用 |
 | `restore <来源> [目录]` | 恢复为「在用」 |
 | `corroborate <id> --source <文件> --uri <地址> --quote "..."` | 补一条独立佐证（世界维度靠它） |
-| `run <id> --script <脚本> --output <输出> --expect 键=值 [--input <上游产物>]` | 登记一次实测（世界维度的另一条路） |
+| `run <id> --script <脚本> --output <输出> --expect 键=值 [--input <上游产物>] [--cmd "..."] [--env "..."]` | 登记一次实测（世界维度的另一条路）。`--input` 可以给多次 |
 
 ## 扫：从外部材料找候选
 
 | 命令 | 做什么 |
 |---|---|
-| `audit [目录] [--strict] [--all] [--json]` | 扫一个目录，看里面有多少文件**没被任何条目引用** |
+| `audit [目录] [--strict] [--all] [--json]` | **隐私自查**：扫密钥 / 邮箱 / 手机号 / 身份证 / 绝对路径。`--strict` 有命中就退 1 |
 | `scan <目录> --project <项目> [--advise] [--commit] [--json]` | 扫外部材料，抽候选主张 |
 | `advise --project <项目> --candidates <f.json>` | 把候选整理成建议（不替你做决定） |
 | `draft <id> [--json]` | 从条文里抽 `check` 候选 |

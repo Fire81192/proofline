@@ -11,7 +11,7 @@
   <rect width="1200" height="680" fill="#ffffff"/>
 
   <text x="600" y="46" text-anchor="middle" font-size="24" font-weight="600" fill="#1f2328">一条主张的一生</text>
-  <text x="600" y="74" text-anchor="middle" font-size="14" fill="#59636e">四步。每一步产出一个文件，每一步都有失败的出口。</text>
+  <text x="600" y="74" text-anchor="middle" font-size="14" fill="#59636e">四步。只有第一步改条目库，每一步都有失败的出口。</text>
 
   <!-- ① new -->
   <g>
@@ -115,5 +115,5 @@
 
   <!-- 回头箭头 -->
 
-  <text x="600" y="648" text-anchor="middle" font-size="12" fill="#8c959f">四步里只有第一步会写文件；后三步都是读——status 和 view 每次都从原文重算，不缓存结论。</text>
+  <text x="600" y="648" text-anchor="middle" font-size="12" fill="#8c959f">四步里只有第一步改条目库；后三步都是读——status 和 view 都从原文重算，不缓存结论。</text>
 </svg>

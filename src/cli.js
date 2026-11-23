@@ -644,6 +644,13 @@ function explainCommitError(res) {
     out('  放弃改动（回到入库时的样子）：git checkout -- <这个条目目录>');
     return;
   }
+  if (res.code === 'trace_shrunk') {
+    out('写入失败：trace_shrunk——留痕里的记录比链头记的少，中间有行被删过。');
+    out('  删记录等于把「被改过」的证据拿掉，比手改还彻底：连 drift 都不留。');
+    out('  确认是自己删的：git checkout -- <entries>/.trace.jsonl');
+    out('  确实要按现状重来：proofline trace --reseal（这一步本身会显式跑一次）');
+    return;
+  }
   if (res.code === 'drift') {
     out('写入失败：文件在你读它之后被改过（并发写入）。重跑一次这条命令。');
     return;
@@ -2226,6 +2233,11 @@ async function cmdStats(dir, asJson) {
   out(`  依据        ${distLine(agg.basis, ['条目', '实测', '判断'])}`);
   out(`  世界        ${distLine(agg.world, ['supported', 'unresolved', 'contradicted'])}`);
   out(`  可用        可引用 ${agg.citable} · 可判定 ${agg.decisive} · 已退役 ${agg.retired}`);
+  // 形状废的条目以前算了不显示，于是「3 条里 1 条读不出来」这件事
+  // 在这条命令上完全看不见——而 stats 正是「文档里要引用的数字」的来源。
+  if (agg.broken > 0) {
+    out(`  形状废      ${agg.broken} 条（不计入上面任何一栏，check 会逐条报）`);
+  }
   out(`  来源        ${agg.sources.size} 个${agg.unregistered ? `（含未登记 ${agg.unregistered} 条主张）` : ''}`);
   out(`  话题        ${agg.topics.size} 个 · 未归话题 ${agg.untagged} 条`);
   const withMap = libs.filter((l) => l.map).length;
@@ -2261,8 +2273,17 @@ async function countLib(root, dirName) {
   const basis = {};
   const world = {};
   const topics = new Set();
+  // basis 只认三个合法值。
+  //
+  // 以前 `basis[it.basis]` 直接把值当键——一条 frontmatter 坏掉的条目 basis 是 null，
+  // 于是字典里多出一个字符串键 "null"，distLine 再把它当成第四种依据打印出来：
+  // 「依据 条目 1 · 实测 0 · 判断 1 · null 1」。
+  // 一个读不出来的条目不是一种依据，它该进「形状废」。
+  const KNOWN_BASIS = ['条目', '实测', '判断'];
+  let unclassified = 0;
   for (const it of items) {
-    basis[it.basis] = (basis[it.basis] ?? 0) + 1;
+    if (KNOWN_BASIS.includes(it.basis)) basis[it.basis] = (basis[it.basis] ?? 0) + 1;
+    else unclassified += 1;
     const w = it.world ?? 'unresolved';
     world[w] = (world[w] ?? 0) + 1;
     if (typeof it.topic === 'string' && it.topic.trim()) topics.add(it.topic.trim());
@@ -2274,7 +2295,8 @@ async function countLib(root, dirName) {
   return {
     dir: dirName,
     total: all.length,
-    broken: all.length - items.length,
+    // 读不出来的 + 读得出来但 basis 不合法的，都不能混进「依据」分布里。
+    broken: all.length - items.length + unclassified,
     citable: items.filter((it) => it.citable).length,
     decisive: items.filter((it) => it.decisive).length,
     retired: items.filter((it) => it.retired).length,
@@ -2382,7 +2404,21 @@ async function cmdTrace(root, opts) {
   if (opts.reseal) {
     const { lines, error } = await readTrace(root);
     if (error) { out(`留痕读不了：${error}`); return 1; }
-    if (lines.length === 0) { out('这个库没有留痕记录，没什么可封的。'); return 0; }
+    if (lines.length === 0) {
+      // 没有记录，但可能有个过期的链头（记录被删了、head 没删）。
+      // 这时不把 head 一起清掉，写入口会一直判 trace_shrunk——
+      // 拒绝写入是对的，但「没有出路」不是：人只能手删文件。
+      const h = await readHead(root);
+      if (h.exists) {
+        await unlink(join(root, '.trace.head')).catch(() => {});
+        out('没有留痕记录，但链头还留着（记录被删过）——链头已清掉。');
+        out('  清掉之后这个库和「从来没建过留痕」一样，写入不会再被拦。');
+        out('  但记录被删这件事，本来就查不出来了——这一步就是承认它。');
+        return 0;
+      }
+      out('这个库没有留痕记录，没什么可封的。');
+      return 0;
+    }
     await writeHead(root, lineHash(lines[lines.length - 1]), lines.length);
     out(`已重建链头：${lines.length} 条记录。`);
     out('  这只在你确认「改动是自己做的」之后才该跑——它不修复篡改，只是重新承认现状。');
@@ -2703,7 +2739,6 @@ async function cmdRetire(root, id, opts) {
     }
     delete data.deprecated;
     const res = await commit({ root, id, text: joinFrontmatter(data, body, KEY_ORDER), expect: entry.hash, op: 'retire' });
-  warnTraceError(id, res);
     warnTraceError(id, res);
     if (!res.ok) {
       out(`撤销失败：${res.code}`);
@@ -2747,8 +2782,15 @@ async function cmdRetire(root, id, opts) {
   out(`条目：${id}`);
   out(`  ${derived.claim}`);
   out();
+  // 预览也要看留痕。
+  //
+  // 以前这里直接用 derived.citable——那是 deriveStatus 的结论，
+  // 不知道留痕这回事。一条被工具之外改过的条目会在这里报「现在：能引用 是」，
+  // 而 status 说不能。退役前最后一次确认，用的却是宽松的那个答案。
+  const previewControlled = await buildControlledMap(root);
+  const nowCitable = derived.citable && previewControlled(id, entry.text);
   out('现在：');
-  out(`  能引用      ${derived.citable ? '是' : '否'}`);
+  out(`  能引用      ${nowCitable ? '是' : derived.citable ? '否（未受控——内容没经过入库闸门）' : '否'}`);
   out(`  能下判断    ${derived.decisive ? '是' : '否'}`);
   out();
   out('退役之后：');
@@ -2850,7 +2892,10 @@ async function buildViewHtml(root, served = false) {
   const entries = [];
   // 证据册也要看留痕：未受控的条目不能给人当依据，因为它的内容没经过入库闸门。
   const viewTrace = await readTrace(root);
-  const viewLast = lastByEntry(viewTrace.lines);
+  // 留痕读坏了，不能拿「坏行之前的那几条」当依据——
+  // 这条条目的最后一笔可能就在读不出来的部分里。
+  // 和 buildControlledMap / cmdStatus 同一条规矩：读不了就按未受控。
+  const viewLast = viewTrace.error ? new Map() : lastByEntry(viewTrace.lines);
 
   for (const e of all) {
     if (e.broken) continue;
@@ -3143,6 +3188,12 @@ async function buildMapHtml(root, served = false) {
     }),
     report,
     mapStats,
+    // 空地图不是「成果」，是「还没有骨架」。
+    //
+    // check 一直这么判（「一个能力块都没有——N 条主张还是没有骨架」），
+    // 而 map 会老老实实出一张空图并 exit 0——同一份库，两个命令两种结论。
+    // 库里没条目时不适用（那是还没开始，不是骨架缺了）。
+    emptySkeleton: (knowledge.blocks ?? []).length === 0 && all.length > 0,
   };
 }
 
@@ -3170,7 +3221,15 @@ async function cmdMap(root, outPath, asJson = false) {
       mapStats: built.mapStats ?? null,
       hasProgress: r.hasProgress,
     }, null, 2));
-    return r.problems.length ? 1 : 0;
+    return r.problems.length || built.emptySkeleton ? 1 : 0;
+  }
+
+  // 空骨架也算「不该出图」：check 说「还没有骨架」，map 不能出一张漂亮的空图
+  // 然后退 0——那等于告诉人「这块已经画完了」。
+  if (built.emptySkeleton && !outPath) {
+    out('地图里一个能力块都没有——这不叫「完整」，叫「还没有骨架」。');
+    out('  先按 map --brief 的任务书切块，再回来出图。确实要看空图：加 --out <路径>。');
+    return 1;
   }
 
   // 有硬问题就不落盘。

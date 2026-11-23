@@ -10,7 +10,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License"></a>
   <a href="#"><img src="https://img.shields.io/badge/node-%3E%3D20-brightgreen" alt="Node 20+"></a>
   <a href="#"><img src="https://img.shields.io/badge/dependencies-0-brightgreen" alt="零依赖"></a>
-  <a href="#"><img src="https://img.shields.io/badge/tests-516%20passing-brightgreen" alt="516 个测试"></a>
+  <a href="#"><img src="https://img.shields.io/badge/tests-531%20passing-brightgreen" alt="531 个测试"></a>
 </p>
 
 <p>
@@ -134,6 +134,8 @@ npm run demo
 | 数值校验只验证过 43 条，误报率未知 | 看到 `run_expect_missing` 先人工核对：是真变了，还是边界判断误伤 |
 | `source_sha256` 哈希的是**解码后的字符串** | 非 UTF-8 的快照，`sha256sum 文件` 对不上工具记的值 |
 | trace 能被整体重写 | `git status` 里 `.trace.jsonl` 和 `.trace.head` 同时变，而 `entry.md` 没变 |
+| **删掉 trace 里某条记录再 `--reseal`，能完全洗白**（写入会先被 `trace_shrunk` 拦住，但 reseal 是显式出口） | `trace` 显示「链头已清掉」的那一次，就是承认删过。**唯一真防线还是 git** |
+| `audit` 的邮箱正则加了长度上界（本地 64 / 域名 253） | 超过这个长度的畸形邮箱不报——但那种东西本来也不是邮箱 |
 
 ### 不判断的东西
 

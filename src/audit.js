@@ -18,7 +18,7 @@
  * 选可核，那就得在选择的那一刻就想清楚要不要存。
  */
 
-import { readdir, readFile } from 'node:fs/promises';
+import { readdir, readFile, stat } from 'node:fs/promises';
 import { join, relative } from 'node:path';
 
 export const PATTERNS = [
@@ -31,7 +31,13 @@ export const PATTERNS = [
   {
     kind: 'email',
     label: '邮箱',
-    re: /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g,
+    // 两个 `+` 都必须有上界。
+    //
+    // 没有上界时，一段没有 `@` 的长字符串（512KB 的一行 `yyy…`）会让每个起始位置
+    // 都吃掉剩余全部字符再逐字回退——O(n²)。实测：512KB 单行文件跑 15 秒不返回，
+    // 而对 4MB 分成 10 万行的文件只要 290ms。加个上限就好了：
+    // 邮箱的本地部分按规范 ≤64、域名 ≤253、顶级域 ≤24，超出的本来也不是邮箱。
+    re: /[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9.-]{1,253}\.[A-Za-z]{2,24}/g,
   },
   {
     kind: 'phone',
@@ -144,8 +150,14 @@ export async function auditDir(dir, { patterns = PATTERNS, maxSamples = 3, inclu
   for (const file of files) {
     let text;
     try {
+      // 先看大小，再读。
+      //
+      // 原来是「整读进内存 → 判超过 4MB 就跳过」——那等于上限对「大文件把进程撑死」
+      // 这件事完全不起作用，而这里注释写的正是这个理由。判断在读取之后，
+      // 保护的就是已经发生的事。
+      const info = await stat(file);
+      if (info.size > MAX_BYTES) { skippedLarge += 1; continue; }
       const buf = await readFile(file);
-      if (buf.length > MAX_BYTES) { skippedLarge += 1; continue; }
       text = buf.toString('utf8');
     } catch {
       unreadableFiles += 1;

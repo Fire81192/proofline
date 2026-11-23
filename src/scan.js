@@ -14,7 +14,7 @@
  * 这样判定层的「同一条不重复说」才有意义：说一次，位置都给他。
  */
 
-import { readdir, readFile } from 'node:fs/promises';
+import { readdir, readFile, stat } from 'node:fs/promises';
 import { join, relative, extname } from 'node:path';
 
 import { RULES } from './rules.js';
@@ -66,18 +66,28 @@ export async function scanProject(dir, { rules = RULES, maxEvidence = 5 } = {}) 
   const byRule = new Map();
   let scanned = 0;
   let skippedLarge = 0;
+  let unreadableFiles = 0;
+  let ruleErrors = 0;
 
   for (const file of files) {
+    const rel = relative(dir, file).replace(/\\/g, '/');
     let text;
     try {
+      // 先看大小再读，和 audit 同一条规矩：判在读取之后，保护的就是已经发生的事。
+      const info = await stat(file);
+      if (info.size > MAX_BYTES) { skippedLarge += 1; continue; }
       const buf = await readFile(file);
-      if (buf.length > MAX_BYTES) { skippedLarge += 1; continue; }
       text = buf.toString('utf8');
     } catch {
+      // 读不了也要报数。
+      //
+      // 以前这里直接 continue，于是「3 个文件里 1 个读不了」和
+      // 「3 个都扫过、没有命中」在输出上是同一句话——
+      // 扫描结果看起来完整，其实少了一份材料，而人以为「没有候选」。
+      unreadableFiles += 1;
       continue;
     }
     scanned += 1;
-    const rel = relative(dir, file).replace(/\\/g, '/');
 
     for (const rule of rules) {
       let hits;
@@ -85,7 +95,10 @@ export async function scanProject(dir, { rules = RULES, maxEvidence = 5 } = {}) 
         // 传相对路径：带 scope 的规则靠它决定「这条文件该不该扫」。
         hits = rule.detect(text, rel);
       } catch {
-        continue; // 一条规则炸了不影响别的
+        // 一条规则炸了不影响别的，但要计数——否则「规则失效」和「没有命中」
+        // 也长一个样，而这两件事的后果完全不同。
+        ruleErrors += 1;
+        continue;
       }
       if (!hits || hits.length === 0) continue;
 
@@ -119,6 +132,11 @@ export async function scanProject(dir, { rules = RULES, maxEvidence = 5 } = {}) 
 
   return {
     candidates: [...byRule.values()],
-    stats: { files: scanned, skippedLarge, unreadable: errors.length, unreadableDirs: errors, rules: rules.length, fired: byRule.size },
+    stats: {
+      files: scanned, skippedLarge,
+      unreadable: unreadableFiles, unreadableDirs: errors,
+      ruleErrors,
+      rules: rules.length, fired: byRule.size,
+    },
   };
 }

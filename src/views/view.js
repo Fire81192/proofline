@@ -70,7 +70,13 @@ function renderTreeNode(node) {
   const chips = node.retired
     ? chip('已退役') + chip('不可引用')
     : [
-      chip(node.evidence === 'supported' ? '可引用' : '仅线索'),
+      // 用 citable 不用 evidence。
+      //
+      // evidence 只代表「引文还在快照里」，而 citable 还带着留痕和形状两道否决。
+      // 以前这里读的是 evidence，于是留痕坏掉、或者条目被工具之外改过时，
+      // HTML 上写着「可引用」，而同一个库的 status 说「不能引用」——
+      // 一份本来要发出去给人看的证据册，比命令行更宽松。
+      chip(node.citable ? '可引用' : (node.controlled === false ? '未受控' : '仅线索')),
       node.world === 'unresolved' ? chip('未定') : chip(node.world === 'supported' ? '已证' : node.world),
     ].join('');
   const quote = node.quotes.length

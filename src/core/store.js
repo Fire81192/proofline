@@ -10,8 +10,8 @@
 
 import { readdir, readFile, writeFile, rename, mkdir, unlink, realpath, stat } from 'node:fs/promises';
 import { parseFrontmatter } from './frontmatter.js';
-import { join, resolve, relative, isAbsolute, dirname } from 'node:path';
-import { appendTrace, readTrace } from './trace.js';
+import { join, resolve, relative, isAbsolute, dirname, basename } from 'node:path';
+import { appendTrace, readTrace, readHead } from './trace.js';
 import { sha256 } from './snapshot.js';
 import { validateEntry } from './validate.js';
 
@@ -45,22 +45,55 @@ export function resolveInside(base, rel) {
  * 两道都要：字符串那道给出清楚的报错，这道堵住符号链接。
  * 单靠前一道，一个 symlink 就能把整个边界绕过去。
  */
-export async function withinReal(base, target) {
-  const realBase = await realpath(base).catch(() => null);
-  if (!realBase) return false;
-  let p = target;
+/**
+ * 一个路径的「真实形态」——即使它还不存在。
+ *
+ * `realpath` 遇到不存在的路径直接抛，而 `withinReal` 拿它当基准时，
+ * 「新建一个库」就意味着 `entries/` 还不存在 → 基准拿不到 → 判越界。
+ * 以前的表现很具体：`import --code` 到一个全新目录报 `escapes_root`，
+ * 而真正该做的事是 mkdir。新库第一次导入**必然失败**，不管输入多正确。
+ *
+ * 做法：往上找到最近一个存在的祖先，把它的 realpath 拿到，
+ * 再把还没创建的那几段按原名接回去。这样符号链接照样会被解析出来。
+ */
+async function realFormOf(p) {
+  const abs = resolve(p);
+  const missing = [];
+  let cur = abs;
   for (;;) {
     try {
-      const real = await realpath(p);
-      const r = relative(realBase, real);
-      if (r === '') return true;
-      return !(r.startsWith('..') || isAbsolute(r));
+      const real = await realpath(cur);
+      return missing.length ? join(real, ...missing.slice().reverse()) : real;
     } catch {
-      const up = dirname(p);
-      if (up === p) return false;
-      p = up;
+      const up = dirname(cur);
+      if (up === cur) return null;   // 到根了还是没有 → 这路径本身有问题
+      missing.push(basename(cur));
+      cur = up;
     }
   }
+}
+
+/**
+ * 目标在不在基准目录内——符号链接也算在内。
+ *
+ * 两道都要：字符串那道给出清楚的报错，这道堵住符号链接。
+ * 单靠前一道，一个 symlink 就能把整个边界绕过去。
+ */
+export async function withinReal(base, target) {
+  const absBase = resolve(base);
+  const absTarget = resolve(target);
+
+  // 先在字符串上判一次：既便宜，又对「还不存在」的两边都有效。
+  const relStr = relative(absBase, absTarget);
+  if (relStr !== '' && (relStr.startsWith('..') || isAbsolute(relStr))) return false;
+
+  // 再对真实形态比一次。两边都用 realFormOf，才不会出现
+  // 「基准不存在 → 直接判越界」那种把新建当成越界的情况。
+  const realBase = await realFormOf(absBase);
+  const realTarget = await realFormOf(absTarget);
+  if (!realBase || !realTarget) return false;
+  const r = relative(realBase, realTarget);
+  return r === '' || !(r.startsWith('..') || isAbsolute(r));
 }
 
 /**
@@ -290,11 +323,33 @@ async function acquireLock(root, timeoutMs = 8000) {
  * @returns {Promise<{ok:boolean, code?:string, hint?:string}>}
  */
 export async function checkUntrackedChange(root, id, currentText) {
-  const { lines } = await readTrace(root).catch(() => ({ lines: [] }));
+  const { lines: rawLines } = await readTrace(root).catch(() => ({ lines: [] }));
+  const lines = rawLines ?? [];
   const lastRec = lines.filter((l) => l && l.id === id).pop();
-  // 没有记录的不判：老库、adopt 之前的历史条目都属这一类。
-  // 「不知道」不等于「有问题」。
-  if (!lastRec || typeof lastRec.after !== 'string') return { ok: true };
+
+  if (!lastRec || typeof lastRec.after !== 'string') {
+    // 这条没有记录。两种可能，必须分开：
+    //   ① 它是新条目，还没入过库（老库、adopt 之前）—— 不判
+    //   ② 它本来有记录，被删掉了 —— 这比手改还彻底
+    //
+    // ② 实测过：手改 claim → set 被拒 → 清空 .trace.jsonl → set 通过 → 「受控 是」。
+    // 连 drift 都不留，比 trace --adopt 干净——adopt 至少还记一笔「按现状重新纳入」。
+    //
+    // 用链头做锚区分：head 里记着总条数。head 的条数比现在读到的多，
+    // 说明中间有行被删过。这时「没有记录」不等于「还没入库」。
+    const head = await readHead(root).catch(() => null);
+    if (head?.exists && !head.error && Number.isInteger(head.count) && head.count > lines.length) {
+      return {
+        ok: false,
+        code: 'trace_shrunk',
+        hint: `留痕里原本有 ${head.count} 条记录，现在只读到 ${lines.length} 条——中间有行被删过。`
+          + '删记录等于把「被改过」的证据拿掉，所以这里不写。'
+          + '确认是自己删的：git checkout -- <entries>/.trace.jsonl；'
+          + '确实要按现状重来：trace --reseal 重建链头（这一步本身会显式跑一次）',
+      };
+    }
+    return { ok: true };
+  }
   if (contentHash(currentText) === lastRec.after) return { ok: true };
   return {
     ok: false,
